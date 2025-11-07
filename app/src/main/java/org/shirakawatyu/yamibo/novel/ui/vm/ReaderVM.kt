@@ -731,8 +731,10 @@ class ReaderVM : ViewModel() {
     }
     // 设置背景颜色
     fun onSetBackgroundColor(color: Color?) {
-        _uiState.value = _uiState.value.copy(backgroundColor = color)
-        toggleNightMode (false)
+        _uiState.value = _uiState.value.copy(
+            backgroundColor = color,
+            nightMode = false
+        )
     }
     // 退出时，保存当前页面的历史记录，清理预加载相关的数据列表
     override fun onCleared() {
