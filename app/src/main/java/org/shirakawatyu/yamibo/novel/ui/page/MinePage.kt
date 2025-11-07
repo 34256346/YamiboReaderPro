@@ -69,7 +69,9 @@ fun MinePage(
 ) {
     SetStatusBarColor(YamiboColors.primary)
     val mineUrl = "https://bbs.yamibo.com/home.php?mod=space&do=profile&mycenter=1&mobile=2"
-    val bbsUrl = "https://bbs.yamibo.com/?mobile=2"
+    val bbsUrl = "https://bbs.yamibo.com/?mobile=2" // 你原来的定义
+    val baseBbsUrl = "https://bbs.yamibo.com/"      // 根URL
+    val indexUrl = "https://bbs.yamibo.com/forum.php" // 论坛主页
 
     var canGoBack by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
@@ -158,7 +160,11 @@ fun MinePage(
                 super.onPageFinished(view, url)
                 if (isSelected && view != null) {
                     val currentUrl = view.url ?: ""
-                    if (currentUrl == bbsUrl) {
+
+                    val isHomepage = currentUrl == bbsUrl ||
+                            currentUrl == baseBbsUrl ||
+                            currentUrl == indexUrl
+                    if (isHomepage) {
                         startLoading(view, mineUrl)
                     }
                 }
