@@ -48,6 +48,7 @@ import org.shirakawatyu.yamibo.novel.ui.theme._300文学Theme
 import org.shirakawatyu.yamibo.novel.ui.vm.BottomNavBarVM
 import org.shirakawatyu.yamibo.novel.ui.widget.BottomNavBar
 import java.net.URLDecoder
+import androidx.core.graphics.drawable.toDrawable
 
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "cookies")
@@ -57,7 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         GlobalData.dataStore = applicationContext.dataStore
         GlobalData.displayMetrics = resources.displayMetrics
-        window.setBackgroundDrawable(ColorDrawable(0xfffcf4cf.toInt()))
+        window.setBackgroundDrawable(0xfffcf4cf.toInt().toDrawable())
         super.onCreate(savedInstanceState)
         setContent {
             App()
@@ -65,7 +66,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// TODO: 阅读器: 反色
 @RequiresApi(Build.VERSION_CODES.O)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable

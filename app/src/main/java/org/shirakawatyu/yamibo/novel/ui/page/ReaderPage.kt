@@ -109,11 +109,12 @@ fun ReaderPage(
     navController: NavController
 ) {
     val uiState by readerVM.uiState.collectAsState()
-    val themeBackground = MaterialTheme.colorScheme.background
-    val finalBackground = uiState.backgroundColor ?: themeBackground
 
     // 将所有内容包裹在 ReaderTheme 中
     ReaderTheme(nightMode = uiState.nightMode) {
+        // 背景颜色
+        val themeBackground = MaterialTheme.colorScheme.background
+        val finalBackground = uiState.backgroundColor ?: themeBackground
         // 页面数
         val pagerState = rememberPagerState(pageCount = { uiState.htmlList.size })
         // 显示设置菜单
