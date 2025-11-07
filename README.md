@@ -39,7 +39,7 @@
 
 ## 软件截图
 
-<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 600px;">
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 100px;">
   <img src="screenshots/1.jpg" style="width: 100%; height: auto;"/>
   <img src="screenshots/2.jpg" style="width: 100%; height: auto;"/>
   <img src="screenshots/3.jpg" style="width: 100%; height: auto;"/>
