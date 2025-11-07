@@ -47,6 +47,10 @@ import kotlinx.coroutines.launch
 import org.shirakawatyu.yamibo.novel.module.YamiboWebViewClient
 import org.shirakawatyu.yamibo.novel.ui.theme.YamiboColors
 import org.shirakawatyu.yamibo.novel.util.ComposeUtil.Companion.SetStatusBarColor
+import androidx.navigation.NavController
+import org.shirakawatyu.yamibo.novel.ui.widget.ReaderModeFAB
+import org.shirakawatyu.yamibo.novel.util.ReaderModeDetector
+import java.net.URLEncoder
 
 // 用于在WebView外部保存登录状态的单例对象
 object BBSPageState {
@@ -61,7 +65,12 @@ object BBSPageState {
  * @param cookieFlow Cookie数据流，用于监听登录状态变化
  */
 @Composable
-fun BBSPage(webView: WebView, isSelected: Boolean, cookieFlow: Flow<String>) {
+fun BBSPage(
+    webView: WebView,
+    isSelected: Boolean,
+    cookieFlow: Flow<String>,
+    navController: NavController
+) {
     SetStatusBarColor(YamiboColors.primary)
     val indexUrl = "https://bbs.yamibo.com/forum.php"
 
@@ -76,6 +85,11 @@ fun BBSPage(webView: WebView, isSelected: Boolean, cookieFlow: Flow<String>) {
     var timeoutJob by remember { mutableStateOf<Job?>(null) }
     // 重试计数器
     var retryCount by remember { mutableIntStateOf(0) }
+    // 当前URL
+    var currentUrl by remember { mutableStateOf<String?>(null) }
+    val canConvertToReader = remember(currentUrl) {
+        ReaderModeDetector.canConvertToReaderMode(currentUrl)
+    }
 
     // 检查当前登录状态
     fun isLoggedIn(cookie: String): Boolean {
@@ -162,6 +176,7 @@ fun BBSPage(webView: WebView, isSelected: Boolean, cookieFlow: Flow<String>) {
             @RequiresApi(Build.VERSION_CODES.M)
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                currentUrl = url
                 canGoBack = view?.canGoBack() ?: false
             }
 
@@ -244,6 +259,7 @@ fun BBSPage(webView: WebView, isSelected: Boolean, cookieFlow: Flow<String>) {
             },
             update = {
                 canGoBack = it.canGoBack()
+                currentUrl = it.url
             },
             onRelease = {
                 (it.parent as? ViewGroup)?.removeView(it)
@@ -295,5 +311,19 @@ fun BBSPage(webView: WebView, isSelected: Boolean, cookieFlow: Flow<String>) {
                 color = YamiboColors.secondary
             )
         }
+        ReaderModeFAB(
+            visible = canConvertToReader && !isLoading && !showLoadError,
+            onClick = {
+                currentUrl?.let { url ->
+                    ReaderModeDetector.extractThreadPath(url)?.let { threadPath ->
+                        val encodedPath = URLEncoder.encode(threadPath, "utf-8")
+                        navController.navigate("ReaderPage/$encodedPath")
+                    }
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 80.dp)
+        )
     }
 }

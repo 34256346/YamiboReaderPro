@@ -612,9 +612,9 @@ class ReaderVM : ViewModel() {
         _uiState.value = _uiState.value.copy(scale = scale, offset = offset)
     }
 
-    fun onSetView(view: Int) {
+    fun onSetView(view: Int, forceReload: Boolean = false) {
         // 检查是否是当前页，如果是，则不执行任何操作
-        if (view == _uiState.value.currentView && !isTransitioning) {
+        if (view == _uiState.value.currentView && !isTransitioning && !forceReload) {
             Log.i(logTag, "Already on view $view. Ignoring.")
             return
         }
@@ -727,8 +727,9 @@ class ReaderVM : ViewModel() {
         _uiState.value = _uiState.value.copy(loadImages = load)
         val currentPage = latestPage
         _uiState.value = _uiState.value.copy(initPage = currentPage)
-        onSetView(uiState.value.currentView)
+        onSetView(uiState.value.currentView, forceReload = true)
     }
+
     // 设置背景颜色
     fun onSetBackgroundColor(color: Color?) {
         _uiState.value = _uiState.value.copy(
@@ -736,6 +737,7 @@ class ReaderVM : ViewModel() {
             nightMode = false
         )
     }
+
     // 退出时，保存当前页面的历史记录，清理预加载相关的数据列表
     override fun onCleared() {
         saveHistory(latestPage)

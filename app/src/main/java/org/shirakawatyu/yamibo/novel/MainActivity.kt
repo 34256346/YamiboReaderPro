@@ -132,7 +132,8 @@ fun App() {
                                 BBSPage(
                                     bbsWebView,
                                     isSelected = bottomNavBarVM.selectedItem == 1,
-                                    cookieFlow = GlobalData.cookieFlow
+                                    cookieFlow = GlobalData.cookieFlow,
+                                    navController = navController
                                 )
                             }
                             composable("MinePage") {
