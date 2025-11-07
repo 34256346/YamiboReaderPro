@@ -46,7 +46,7 @@ JSON解析: [FastJSON2](https://github.com/alibaba/fastjson2)
 
 图片显示: [coil](https://github.com/coil-kt/coil)
 
-拖拽排序： [Reorderable](https://github.com/Calvin-LL/Reorderable)
+拖拽排序: [Reorderable](https://github.com/Calvin-LL/Reorderable)
 
 ## 维护者
 
