@@ -39,14 +39,19 @@
 
 ## 软件截图
 
-<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 100px;">
-  <img src="screenshots/1.jpg" style="width: 100%; height: auto;"/>
-  <img src="screenshots/2.jpg" style="width: 100%; height: auto;"/>
-  <img src="screenshots/3.jpg" style="width: 100%; height: auto;"/>
-  <img src="screenshots/4.jpg" style="width: 100%; height: auto;"/>
-  <img src="screenshots/5.jpg" style="width: 100%; height: auto;"/>
-  <img src="screenshots/6.jpg" style="width: 100%; height: auto;"/>
-</div>
+<table>
+  <tr>
+    <td><img src="screenshots/1.jpg" width="200"></td>
+    <td><img src="screenshots/2.jpg" width="200"></td>
+    <td><img src="screenshots/3.jpg" width="200"></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/4.jpg" width="200"></td>
+    <td><img src="screenshots/5.jpg" width="200"></td>
+    <td><img src="screenshots/6.jpg" width="200"></td>
+  </tr>
+</table>
+
 
 
 
