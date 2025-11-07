@@ -1,10 +1,8 @@
 # 300文学阅读器
 
-为百合会论坛小说提供更好的阅读体验，支持阅读点记忆、左右滑动翻页、跳页等常见阅读器功能，同时为其漫画阅读提供有限支持（能缩放，但是左右滑动有点卡）
+为百合会论坛小说提供更好的阅读体验
 
 系统要求: Android 7.0及以上
-
-PS: 因为平时事情比较多，维护频率应该不会很高
 
 ## 内容列表
 
@@ -16,24 +14,23 @@ PS: 因为平时事情比较多，维护频率应该不会很高
 
 ## 已知问题
 
-1. 收藏列表不会自动刷新，登录后请手动点击右上角刷新
-2. 网页翻页后页边距不正常，需要重新进入
+1. 我没有多个账号，目测换账号登录肯定会出问题，要换的话一定要把数据清除。
 
 ## 软件下载
 
-[Github Release](https://github.com/flben233/YamiboReader/releases)
 
-[蓝奏云分流(手机使用浏览器打开后以电脑方式浏览，密码:he2j)](https://wwqx.lanzoul.com/b04371uhi)
 
 ## 软件截图
 
 <div style="display: flex">
-  <img src="screenshots/1705249279177.jpg" width="18%"/>
-  <img src="screenshots/1705249279198.jpg" width="18%"/>
-  <img src="screenshots/1705249279219.jpg" width="18%"/>
-  <img src="screenshots/1705249279240.jpg" width="18%"/>
-  <img src="screenshots/1705249279266.jpg" width="18%"/>
+  <img src="screenshots/1.jpg" width="15%"/>
+  <img src="screenshots/2.jpg" width="15%"/>
+  <img src="screenshots/3.jpg" width="15%"/>
+  <img src="screenshots/4.jpg" width="15%"/>
+  <img src="screenshots/5.jpg" width="15%"/>
+  <img src="screenshots/6.jpg" width="15%"/>
 </div>
+
 
 ## 开源许可
 
@@ -49,9 +46,15 @@ JSON解析: [FastJSON2](https://github.com/alibaba/fastjson2)
 
 图片显示: [coil](https://github.com/coil-kt/coil)
 
+拖拽排序： [Reorderable](https://github.com/Calvin-LL/Reorderable)
+
 ## 维护者
 
-[@flben233](https://github.com/flben233)
+[@34256346](https://github.com/34256346)
+
+## 原项目 
+
+本项目 Fork 自 [flben233/YamiboReader](https://github.com/flben233/YamiboReader)。 感谢原作者 [@flben233](https://github.com/flben233) 的出色工作。
 
 ## 如何贡献
 
