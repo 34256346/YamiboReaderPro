@@ -94,6 +94,7 @@ private val backgroundColors = listOf(
     Color(0xFFd9e0e8),
     Color(0xFFdddddd)
 )
+
 /**
  * 阅读器页面，用于格式化显示原论坛内容
  *
@@ -144,7 +145,11 @@ fun ReaderPage(
                 null
             }
         // 存储fontSize,lineHeight,padding
-        var settingsOnOpen by remember { mutableStateOf<Pair<Triple<TextUnit, TextUnit, Dp>, Color?>?>(null) }
+        var settingsOnOpen by remember {
+            mutableStateOf<Pair<Triple<TextUnit, TextUnit, Dp>, Color?>?>(
+                null
+            )
+        }
         // 是否显示加载遮罩
         val isLoading = readerVM.showLoadingScrim
         // 是否显示图片加载警告对话框
@@ -340,7 +345,7 @@ fun ReaderPage(
 
                                 ) {
                                     IconButton(onClick = {
-                                        navController.popBackStack()
+                                        navController.navigateUp()
                                     }) {
                                         Icon(
                                             Icons.AutoMirrored.Filled.ArrowBack,
@@ -760,6 +765,7 @@ private fun MainSettingsMenu(
         }
     }
 }
+
 /**
  * 用于显示背景颜色选项的行
  */
@@ -846,6 +852,7 @@ private fun RowScope.ColorSwatch(
         }
     }
 }
+
 /**
  * 二级菜单 - 间距调节 (行高, 页距)
  */
