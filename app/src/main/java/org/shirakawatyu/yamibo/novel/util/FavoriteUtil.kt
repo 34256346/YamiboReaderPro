@@ -1,13 +1,43 @@
+// novel/util/FavoriteUtil.kt
+
 package org.shirakawatyu.yamibo.novel.util
 
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.alibaba.fastjson2.JSON
 import com.alibaba.fastjson2.JSONObject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import org.shirakawatyu.yamibo.novel.bean.Favorite
+import org.shirakawatyu.yamibo.novel.global.GlobalData
 
 class FavoriteUtil {
     companion object {
         private val key = stringPreferencesKey("yamibo_favorite")
+
+        /**
+         * [NEW]
+         * 提供一个 Flow，用于实时监听收藏列表的变化。
+         */
+        fun getFavoriteFlow(): Flow<List<Favorite>> {
+            val dataStore =
+                GlobalData.dataStore ?: throw IllegalStateException("DataStore not initialized")
+            return dataStore.data
+                .map { preferences ->
+                    val jsonString = preferences[key]
+                    if (jsonString != null) {
+                        try {
+                            // 确保 jsonToHashMap 在这里是线程安全的
+                            // (JSON.parseObject 是线程安全的)
+                            jsonToHashMap(jsonString).values.toList()
+                        } catch (e: Exception) {
+                            // 处理可能的数据损坏
+                            emptyList()
+                        }
+                    } else {
+                        emptyList()
+                    }
+                }
+        }
 
         /**
          * 合并网络收藏和本地收藏。
@@ -16,27 +46,28 @@ class FavoriteUtil {
          * 3. 移除在网络上已被删除的收藏项。
          */
         fun addFavorite(favorites: List<Favorite>, callback: (list: List<Favorite>) -> Unit) {
-            // 1. 获取本地存储的旧收藏 Map (保持了顺序)
+            // ... (此函数保持不变)
+            // 获取本地存储的旧收藏Map
             getFavoriteMap { oldMap ->
 
                 val networkMap = favorites.associateBy { it.url }
                 val finalOrderedMap = LinkedHashMap<String, Favorite>()
 
-                // 2. 添加新项目：遍历网络列表，如果项目不在旧Map中，则它是新项目
+                // 添加新项目：遍历网络列表，如果项目不在旧Map中，则它是新项目
                 for (netFav in favorites) {
                     if (!oldMap.containsKey(netFav.url)) {
                         finalOrderedMap[netFav.url] = netFav
                     }
                 }
 
-                // 3. 添加旧项目：遍历本地的旧Map (保持用户之前的顺序)
+                // 添加旧项目：遍历本地的旧Map
                 for (oldEntry in oldMap.entries) {
                     val url = oldEntry.key
                     val oldFavData = oldEntry.value
 
                     // 检查这个旧项目是否仍然存在于网络列表中
                     if (networkMap.containsKey(url)) {
-                        // 它还存在。获取网络版本（用于更新标题等）
+                        // 存在，获取网络版本
                         val netFavData = networkMap[url]!!
 
                         // 创建更新后的 Favorite，
@@ -44,17 +75,15 @@ class FavoriteUtil {
                         // 但更新网络上的信息 (如 title)
                         val updatedFav = oldFavData.copy(
                             title = netFavData.title
-                            // 注意：这里保留了 oldFavData 的 lastPage, lastView, lastChapter, authorId
                         )
                         finalOrderedMap[url] = updatedFav
                     }
-                    // 如果 oldEntry 不在 networkMap 中，它将被自动跳过
                 }
 
-                // 4. 保存这个合并后的、新顺序的 Map
+                // 保存这个合并后的新顺序的Map
                 DataStoreUtil.addData(JSON.toJSONString(finalOrderedMap), key)
 
-                // 5. 返回新列表给 VM
+                // 返回新列表给VM
                 callback(finalOrderedMap.values.toList())
             }
         }
@@ -63,6 +92,7 @@ class FavoriteUtil {
          * 保存用户手动排序后的列表。
          */
         fun saveFavoriteOrder(orderedList: List<Favorite>) {
+            // ... (此函数保持不变)
             val favMap = LinkedHashMap<String, Favorite>()
             // 按照列表的新顺序重新构建 LinkedHashMap
             orderedList.forEach { fav ->
@@ -74,6 +104,7 @@ class FavoriteUtil {
 
 
         fun updateFavorite(favorite: Favorite) {
+            // ... (此函数保持不变)
             DataStoreUtil.getData(key, callback = {
                 val favMap = jsonToHashMap(it)
                 favMap[favorite.url] = favorite
@@ -81,23 +112,48 @@ class FavoriteUtil {
             })
         }
 
+        fun updateHiddenStatus(urls: Set<String>, isHidden: Boolean, onComplete: () -> Unit) {
+            // ... (此函数保持不变)
+            DataStoreUtil.getData(key, callback = { data ->
+                val favMap = jsonToHashMap(data)
+                var changed = false
+                urls.forEach { url ->
+                    favMap[url]?.let { fav ->
+                        if (fav.isHidden != isHidden) {
+                            fav.isHidden = isHidden
+                            changed = true
+                        }
+                    }
+                }
+                // 只有在状态实际发生变化时才写入DataStore
+                if (changed) {
+                    DataStoreUtil.addData(JSON.toJSONString(favMap), key, onComplete)
+                } else {
+                    onComplete()
+                }
+            }, onNull = onComplete) // 如果数据为空，也调用onComplete
+        }
+
         fun getFavoriteMap(callback: (map: Map<String, Favorite>) -> Unit) {
+            // ... (此函数保持不变)
             DataStoreUtil.getData(key, callback = {
                 val favMap = jsonToHashMap(it)
                 callback(favMap)
             }, onNull = {
-                // [已修改] 确保 onNull 时返回一个空的 LinkedHashMap
+                // 确保onNull时返回一个空的LinkedHashMap
                 callback(LinkedHashMap())
             })
         }
 
         fun getFavorite(callback: (list: List<Favorite>) -> Unit) {
+            // ... (此函数保持不变)
             getFavoriteMap {
                 callback(it.values.toList())
             }
         }
 
         private fun jsonToHashMap(text: String): LinkedHashMap<String, Favorite> {
+            // ... (此函数保持不变)
             val jsonObject: JSONObject = JSON.parseObject(text)
             val map = LinkedHashMap<String, Favorite>()
             jsonObject.values.forEach {
@@ -108,7 +164,8 @@ class FavoriteUtil {
                     obj["lastPage"] as Int,
                     obj["lastView"] as Int,
                     obj["lastChapter"] as? String,
-                    obj["authorId"] as? String
+                    obj["authorId"] as? String,
+                    obj["isHidden"] as? Boolean ?: false
                 )
                 map[fav.url] = fav
             }

@@ -2,6 +2,8 @@ package org.shirakawatyu.yamibo.novel.util
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import org.shirakawatyu.yamibo.novel.bean.Content
+import org.shirakawatyu.yamibo.novel.bean.ContentType
 
 // 分页算法
 class TextUtil {
@@ -59,7 +61,7 @@ class TextUtil {
         private fun calculateMaxLines(
             totalHeightPx: Float,
             lineHeightPx: Float,
-            safeAreaRatio: Float = 0.95f
+            safeAreaRatio: Float = 1.0f // 为了竖直滑动时无空白，不设置安全区了
         ): Int {
             val safeHeight = totalHeightPx * safeAreaRatio
             val calculatedLines = (safeHeight / lineHeightPx).toInt()
@@ -241,6 +243,180 @@ class TextUtil {
                 val newLineLength = lineBuilder.length - 1
                 if (newLineLength > 0) {
                     chunks.add(lineBuilder.substring(0, newLineLength))
+                    lineBuilder.clear()
+                    lineBuilder.append(lastChar).append(currentChar)
+
+                    val lastCharWidth = getCharWidth(lastChar, halfWidthPx, fullWidthPx)
+                    val currentCharWidth = getCharWidth(currentChar, halfWidthPx, fullWidthPx)
+                    return lastCharWidth + currentCharWidth
+                }
+            }
+
+            return null
+        }
+
+        fun pagingTextVertical(
+            rawContentList: List<Content>,
+            width: Dp,
+            fontSize: TextUnit,
+            letterSpacing: TextUnit
+        ): List<Content> {
+
+            val targetPixelWidth = ValueUtil.dpToPx(width)
+            val fontSizePx = ValueUtil.spToPx(fontSize)
+            val letterSpacingPx = ValueUtil.spToPx(letterSpacing)
+            val halfWidthPx = (0.5f * fontSizePx) + letterSpacingPx
+            val fullWidthPx = fontSizePx + letterSpacingPx
+
+            // 结果列表
+            val resultLines = ArrayList<Content>()
+            var isStartOfParagraph = true // 标记是否为段落首行
+
+            for (content in rawContentList) {
+                if (content.type == ContentType.IMG) {
+                    resultLines.add(content) // 图片保持原样
+                    isStartOfParagraph = true // 图片后面强制认为是新段落
+                    continue
+                }
+
+                if (content.type == ContentType.TEXT) {
+                    val text = content.data
+                    val chapterTitle = content.chapterTitle // 保留章节标题
+
+                    // 按换行符分割
+                    text.lineSequence().forEach { line ->
+                        if (line.isBlank()) {
+                            // 这是一个段落分隔符
+                            if (resultLines.isNotEmpty()) {
+                                // 添加一个空的 TEXT Content 作为段落标记
+                                val lastContent = resultLines.last()
+                                // 避免连续添加空行
+                                if (lastContent.type != ContentType.TEXT || lastContent.data.isNotEmpty()) {
+                                    resultLines.add(Content("", ContentType.TEXT, chapterTitle))
+                                }
+                            }
+                            isStartOfParagraph = true
+                        } else {
+                            // 这是一个内容行
+                            val lineToChunk: String
+                            if (isStartOfParagraph) {
+                                val trimmedLine = line.trimStart(' ', '　')
+                                lineToChunk = "　　$trimmedLine"
+                                isStartOfParagraph = false
+                            } else {
+                                lineToChunk = line
+                            }
+
+                            // 调用 chunkLineOptimized
+                            chunkLineOptimizedVertical(
+                                line = lineToChunk,
+                                targetPixelWidth = targetPixelWidth,
+                                halfWidthPx = halfWidthPx,
+                                fullWidthPx = fullWidthPx,
+                                chapterTitle = chapterTitle, // 传递标题
+                                output = resultLines // 输出到 Content 列表
+                            )
+                        }
+                    }
+                }
+            }
+            return resultLines
+        }
+
+        private fun chunkLineOptimizedVertical(
+            line: String,
+            targetPixelWidth: Float,
+            halfWidthPx: Float,
+            fullWidthPx: Float,
+            chapterTitle: String?,
+            output: MutableList<Content>
+        ) {
+            val lineLength = line.length
+            val charWidths = FloatArray(lineLength) { i ->
+                if (line[i].code in ASCII_START..ASCII_END) halfWidthPx else fullWidthPx
+            }
+
+            val lineBuilder = StringBuilder()
+            var currentWidth = 0.0f
+            var i = 0
+
+            while (i < lineLength) {
+                val c = line[i]
+                val charWidth = charWidths[i]
+
+                if (currentWidth + charWidth > targetPixelWidth && lineBuilder.isNotEmpty()) {
+                    val newWidth = handlePunctuationOptimizedVertical(
+                        lineBuilder = lineBuilder,
+                        currentChar = c,
+                        chapterTitle = chapterTitle,
+                        chunks = output,
+                        halfWidthPx = halfWidthPx,
+                        fullWidthPx = fullWidthPx
+                    )
+
+                    if (newWidth != null) {
+                        currentWidth = newWidth
+                        i++
+                        continue
+                    }
+
+                    // 正常换行
+                    output.add(
+                        Content(
+                            lineBuilder.toString(),
+                            ContentType.TEXT,
+                            chapterTitle
+                        )
+                    )
+                    lineBuilder.clear()
+                    currentWidth = 0.0f
+                }
+
+                currentWidth += charWidth
+                lineBuilder.append(c)
+                i++
+            }
+
+            if (lineBuilder.isNotEmpty()) {
+                output.add(Content(lineBuilder.toString(), ContentType.TEXT, chapterTitle))
+            }
+        }
+
+        private fun handlePunctuationOptimizedVertical(
+            lineBuilder: StringBuilder,
+            currentChar: Char,
+            chapterTitle: String?,
+            chunks: MutableList<Content>,
+            halfWidthPx: Float,
+            fullWidthPx: Float
+        ): Float? {
+            if (lineBuilder.isEmpty()) return null
+
+            val lastChar = lineBuilder[lineBuilder.length - 1]
+
+            // 避头
+            if (currentChar.code < PUNCTUATION_LINE_START_DENY_SET.size &&
+                PUNCTUATION_LINE_START_DENY_SET[currentChar.code]
+            ) {
+                lineBuilder.append(currentChar)
+                chunks.add(Content(lineBuilder.toString(), ContentType.TEXT, chapterTitle))
+                lineBuilder.clear()
+                return 0.0f
+            }
+
+            // 避尾
+            if (lastChar.code < PUNCTUATION_LINE_END_DENY_SET.size &&
+                PUNCTUATION_LINE_END_DENY_SET[lastChar.code]
+            ) {
+                val newLineLength = lineBuilder.length - 1
+                if (newLineLength > 0) {
+                    chunks.add(
+                        Content(
+                            lineBuilder.substring(0, newLineLength),
+                            ContentType.TEXT,
+                            chapterTitle
+                        )
+                    )
                     lineBuilder.clear()
                     lineBuilder.append(lastChar).append(currentChar)
 

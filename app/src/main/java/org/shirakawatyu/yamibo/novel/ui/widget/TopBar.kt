@@ -20,7 +20,7 @@ import org.shirakawatyu.yamibo.novel.ui.theme.YamiboColors
 @Composable
 fun TopBar(title: String = "收藏", content: @Composable () -> Unit = {}) {
     Surface(color = YamiboColors.onSurface) {
-        Row(modifier = Modifier.padding(15.dp, 10.dp).fillMaxWidth().height(30.dp),
+        Row(modifier = Modifier.padding(15.dp, 10.dp).fillMaxWidth().height(36.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

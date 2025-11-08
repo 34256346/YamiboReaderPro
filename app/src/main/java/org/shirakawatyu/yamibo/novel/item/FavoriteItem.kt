@@ -45,7 +45,10 @@ fun FavoriteItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isDragging: Boolean = false,
-    dragHandle: @Composable (() -> Unit) = {}
+    dragHandle: @Composable (() -> Unit) = {},
+    isManageMode: Boolean = false,
+    isSelected: Boolean = false,
+    isHidden: Boolean = false
 ) {
     // 拖拽动画：根据是否处于拖拽状态动态调整卡片的阴影、缩放和颜色
     val elevation by animateDpAsState(
@@ -57,7 +60,12 @@ fun FavoriteItem(
         label = "scale_animation"
     )
     val color by animateColorAsState(
-        targetValue = if (isDragging) YamiboColors.onSurface else YamiboColors.tertiary, // 拖拽时变成一个更深的颜色
+        targetValue = when {
+            isDragging -> YamiboColors.onSurface // 拖拽时
+            isManageMode && isSelected -> YamiboColors.secondary // 管理模式 + 选中
+            isManageMode && isHidden -> Color.LightGray // 管理模式+已隐藏(未选中)
+            else -> YamiboColors.tertiary // 默认
+        },
         label = "color_animation"
     )
     Card(
@@ -100,6 +108,14 @@ fun FavoriteItem(
                     fontSize = 12.sp,
                     text = "上次读到第${lastPage + 1}页, 对应网页第${lastView}页"
                 )
+                if (isManageMode && isHidden) {
+                Text(
+                    modifier = Modifier.padding(top = 2.dp),
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    text = "[已隐藏]"
+                )
+            }
             }
             // 拖拽手柄
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,4 +135,31 @@ fun FavoriteItemPreview() {
         lastChapter = "episode 397 宫城志绪理",
         onClick = {}
     )
+}
+
+@Preview
+@Composable
+fun FavoriteItemManageModePreview() {
+    Column {
+        FavoriteItem(
+            title = "正常项目",
+            lastView = 1, lastPage = 2, lastChapter = "Chapter 1",
+            onClick = {}, isManageMode = true, isSelected = false, isHidden = false
+        )
+        FavoriteItem(
+            title = "选中项目",
+            lastView = 1, lastPage = 2, lastChapter = "Chapter 2",
+            onClick = {}, isManageMode = true, isSelected = true, isHidden = false
+        )
+        FavoriteItem(
+            title = "隐藏项目",
+            lastView = 1, lastPage = 2, lastChapter = "Chapter 3",
+            onClick = {}, isManageMode = true, isSelected = false, isHidden = true
+        )
+        FavoriteItem(
+            title = "选中的隐藏项目",
+            lastView = 1, lastPage = 2, lastChapter = "Chapter 4",
+            onClick = {}, isManageMode = true, isSelected = true, isHidden = true
+        )
+    }
 }

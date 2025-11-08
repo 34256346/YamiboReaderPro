@@ -8,15 +8,17 @@ public class ReaderSettings {
     private Boolean nightMode;
     private Boolean loadImages;
     private String backgroundColor;
+    private Boolean isVerticalMode;
 
-
-    public ReaderSettings(Float fontSizePx, Float lineHeightPx, Float padding, Boolean nightMode, String backgroundColor, Boolean loadImages) {
+    public ReaderSettings(Float fontSizePx, Float lineHeightPx, Float padding, Boolean nightMode, String backgroundColor, Boolean loadImages, Boolean isVerticalMode) {
         this.fontSizePx = fontSizePx;
         this.lineHeightPx = lineHeightPx;
         this.paddingDp = padding;
         this.nightMode = nightMode;
         this.backgroundColor = backgroundColor;
         this.loadImages = loadImages;
+        this.isVerticalMode = isVerticalMode;
+
     }
 
     public ReaderSettings() {
@@ -68,5 +70,13 @@ public class ReaderSettings {
 
     public void setLoadImages(Boolean loadImages) {
         this.loadImages = loadImages;
+    }
+
+    public Boolean getIsVerticalMode() {
+        return isVerticalMode;
+    }
+
+    public void setIsVerticalMode(Boolean isVerticalMode) {
+        this.isVerticalMode = isVerticalMode;
     }
 }

@@ -16,5 +16,6 @@ data class Favorite(
     var lastPage: Int = 0,
     var lastView: Int = 1,
     var lastChapter: String? = null,
-    var authorId: String? = null
+    var authorId: String? = null,
+    var isHidden: Boolean = false
 )

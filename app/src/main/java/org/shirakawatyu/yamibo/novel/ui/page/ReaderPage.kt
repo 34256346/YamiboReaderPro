@@ -1,3 +1,5 @@
+// novel/ui/page/ReaderPage.kt
+
 package org.shirakawatyu.yamibo.novel.ui.page
 
 import android.annotation.SuppressLint
@@ -42,6 +44,8 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -62,9 +66,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
@@ -76,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.shirakawatyu.yamibo.novel.R
 import org.shirakawatyu.yamibo.novel.ui.state.ChapterInfo
@@ -85,6 +93,7 @@ import org.shirakawatyu.yamibo.novel.ui.vm.ReaderVM
 import org.shirakawatyu.yamibo.novel.ui.widget.ContentViewer
 import org.shirakawatyu.yamibo.novel.ui.widget.PassageWebView
 import org.shirakawatyu.yamibo.novel.util.ComposeUtil.Companion.SetStatusBarColor
+import org.shirakawatyu.yamibo.novel.util.ValueUtil
 import kotlin.math.roundToInt
 
 private val backgroundColors = listOf(
@@ -116,8 +125,12 @@ fun ReaderPage(
         // 背景颜色
         val themeBackground = MaterialTheme.colorScheme.background
         val finalBackground = uiState.backgroundColor ?: themeBackground
-        // 页面数
+
+        // [MODIFIED] 撤销上一版修改：改回简单的 state 创建
         val pagerState = rememberPagerState(pageCount = { uiState.htmlList.size })
+        // 滚动列表 (竖屏)
+        val lazyListState = rememberLazyListState()
+
         // 显示设置菜单
         var showSettings by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
@@ -137,10 +150,29 @@ fun ReaderPage(
                 readerVM.toggleChapterDrawer(false)
             }
         }
-        // 当前章节标题
+        // [修改] 当前页/行 索引
+        val currentPageIndex = if (uiState.isVerticalMode) {
+            // 使用快照，确保在重组时获取最新的稳定值
+            remember(
+                lazyListState.firstVisibleItemIndex,
+                lazyListState.isScrollInProgress
+            ) {
+                if (lazyListState.isScrollInProgress) {
+                    // 如果在滚动中，报告我们正前往的页面（或当前页）
+                    lazyListState.firstVisibleItemIndex
+                } else {
+                    // 稳定在的页面
+                    lazyListState.firstVisibleItemIndex
+                }
+            }.coerceIn(0, (uiState.htmlList.size - 1).coerceAtLeast(0))
+        } else {
+            pagerState.currentPage
+        }
+
+        // 使用这个正确的 currentPageIndex 来获取标题
         val currentChapterTitle =
-            if (uiState.htmlList.isNotEmpty() && pagerState.currentPage < uiState.htmlList.size) {
-                uiState.htmlList[pagerState.currentPage].chapterTitle
+            if (uiState.htmlList.isNotEmpty() && currentPageIndex < uiState.htmlList.size) {
+                uiState.htmlList[currentPageIndex].chapterTitle
             } else {
                 null
             }
@@ -181,19 +213,10 @@ fun ReaderPage(
             finalBackground
         }
         SetStatusBarColor(statusBarColor)
-        // 在首次加载时调用readerVM的firstLoad方法
-        BoxWithConstraints {
-            LaunchedEffect(Unit) {
-                readerVM.firstLoad(url, maxHeight, maxWidth)
-            }
-        }
-        // 监听HTML列表数据变化
-        LaunchedEffect(uiState.htmlList.firstOrNull(), uiState.htmlList.size) {
-            // 改变的列表不为空时滚动到初始页面
-            if (uiState.htmlList.isNotEmpty()) {
-                pagerState.scrollToPage(uiState.initPage)
-            }
-        }
+
+        // [REMOVED] 移除上一版错误的 LaunchedEffect
+        // ...
+
         // 监听设置页面显示状态变化
         LaunchedEffect(showSettings) {
             // 保存打开时的设置页面参数作为是否改变的判断基准
@@ -204,7 +227,25 @@ fun ReaderPage(
                 )
             }
         }
-
+        // 监听竖屏滚动状态
+        LaunchedEffect(uiState.isVerticalMode, lazyListState) {
+            if (uiState.isVerticalMode) {
+                // [修复] 同时监听索引和滚动状态
+                snapshotFlow {
+                    // 只有当isScrollInProgress为false时，我们才认为状态是“稳定”的
+                    Pair(lazyListState.firstVisibleItemIndex, !lazyListState.isScrollInProgress)
+                }
+                    .distinctUntilChanged() // 确保只有在稳定状态或索引变化时才触发
+                    .collect { (visibleIndex, isSettled) ->
+                        // 当列表“稳定”在新的索引时，才调用VM
+                        if (isSettled) {
+                            if (visibleIndex >= 0 && visibleIndex < uiState.htmlList.size) {
+                                readerVM.onVerticalPageSettled(visibleIndex)
+                            }
+                        }
+                    }
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -224,20 +265,39 @@ fun ReaderPage(
                         drawerState = drawerState,
                         chapterList = uiState.chapterList,
                         currentChapterTitle = currentChapterTitle,
+                        // [修改] 传递 pageCount 和 isVerticalMode
+                        pageCount = uiState.htmlList.size,
+                        isVerticalMode = uiState.isVerticalMode,
                         onChapterClick = { index ->
                             scope.launch {
-                                pagerState.animateScrollToPage(index)
+                                // --- 修改这里的逻辑 ---
+                                if (uiState.isVerticalMode) {
+                                    // 如果是竖屏模式，滚动 LazyList
+                                    lazyListState.scrollToItem(index)
+                                } else {
+                                    // 否则，滚动 Pager
+                                    pagerState.animateScrollToPage(index)
+                                }
                             }
                             readerVM.toggleChapterDrawer(false)
                         }
                     )
                 }
             ) {
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(finalBackground)
                 ) {
+                    var hasLoaded by remember { mutableStateOf(false) }
+
+                    if (maxHeight > 0.dp && maxWidth > 0.dp && !hasLoaded) {
+                        LaunchedEffect(maxHeight, maxWidth, url) {
+                            readerVM.firstLoad(url, maxHeight, maxWidth)
+                            hasLoaded = true
+                        }
+                    }
+
                     if (uiState.isError) {
                         // 显示错误和重试界面
                         Column(
@@ -264,43 +324,134 @@ fun ReaderPage(
                                 Text("重试")
                             }
                         }
-                    } else {
-                        HorizontalPager(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    onClick = { showSettings = true }
-                                )
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { _, pan, zoom, _ ->
-                                        readerVM.onTransform(pan, zoom)
+                    } else if (hasLoaded) {
+
+                        // [MODIFIED]
+                        // 1. 定义一个key，当数据(列表)和目标页(initPage)都准备好时，这个key会更新
+                        val dataKey =
+                            "${uiState.htmlList.hashCode()}_${uiState.initPage}_${uiState.isVerticalMode}"
+                        // 2. `remember(dataKey)`: 当key变化时，此状态会重置为false
+                        var isInitialScrollDone by remember(dataKey) { mutableStateOf(false) }
+
+                        // [MODIFIED]
+                        // 仅在 hasLoaded 且 htmlList *非空* 时才渲染内容
+                        if (uiState.htmlList.isNotEmpty()) {
+
+                            // [MODIFIED]
+                            // 3. 此 LaunchedEffect 仅在 dataKey 变化时运行一次
+                            LaunchedEffect(dataKey) {
+                                if (uiState.isVerticalMode) {
+                                    if (lazyListState.firstVisibleItemIndex != uiState.initPage) {
+                                        // 立即滚动，不带动画
+                                        lazyListState.scrollToItem(uiState.initPage)
+                                    }
+                                } else {
+                                    if (pagerState.currentPage != uiState.initPage) {
+                                        // 立即滚动，不带动画
+                                        pagerState.scrollToPage(uiState.initPage)
                                     }
                                 }
-                                .graphicsLayer(
-                                    scaleX = uiState.scale,
-                                    scaleY = uiState.scale,
-                                    translationX = uiState.offset.x,
-                                    translationY = uiState.offset.y
-                                ),
-                            state = pagerState,
-                        ) { page ->
-                            ContentViewer(
-                                data = uiState.htmlList[page],
-                                padding = uiState.padding,
-                                lineHeight = uiState.lineHeight,
-                                letterSpacing = uiState.letterSpacing,
-                                fontSize = uiState.fontSize,
-                                currentPage = pagerState.currentPage + 1,
-                                pageCount = pagerState.pageCount,
-                                nightMode = uiState.nightMode,
-                                backgroundColor = finalBackground
-                            )
-
-                            SideEffect {
-                                readerVM.onPageChange(pagerState, scope)
+                                // 4. 滚动完成后，标记为完成
+                                isInitialScrollDone = true
                             }
+
+                            // [MODIFIED]
+                            // 5. 使用 Box 和 graphicsLayer 将内容隐藏 (alpha=0f)
+                            //    直到 isInitialScrollDone 变为 true
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer(alpha = if (isInitialScrollDone) 1f else 0f)
+                            ) {
+                                if (uiState.isVerticalMode) {
+                                    // 竖屏滚动模式
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                onClick = { showSettings = true }
+                                            )
+                                            // [修改] LazyColumn 控制左右内边距
+                                            .padding(horizontal = uiState.padding),
+                                        state = lazyListState
+                                    ) {
+                                        itemsIndexed(
+                                            items = uiState.htmlList,
+                                            // [修改] Key 现在基于行内容
+                                            key = { index, item -> "${item.type}_${item.chapterTitle}_${item.data.hashCode()}_${index}" }
+                                        ) { index, content ->
+                                            // [修改] 移除 Box 和 Modifier.height(maxHeight)
+                                            // [修改] 直接调用 ContentViewer
+                                            ContentViewer(
+                                                data = content,
+                                                padding = uiState.padding, // 传递以便 ContentViewer (横屏) 使用
+                                                lineHeight = uiState.lineHeight,
+                                                letterSpacing = uiState.letterSpacing,
+                                                fontSize = uiState.fontSize,
+                                                currentPage = index + 1, // [修改] 这是 *行* 索引
+                                                pageCount = uiState.htmlList.size, // [修改] 这是 *总行数*
+                                                nightMode = uiState.nightMode,
+                                                backgroundColor = finalBackground, // 传递以便 ContentViewer (横屏) 使用
+                                                isVerticalMode = true // [重要] 告知 ContentViewer 处于竖屏模式
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // [旧逻辑] 横屏翻页模式
+                                    HorizontalPager(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                onClick = { showSettings = true }
+                                            )
+                                            .pointerInput(Unit) {
+                                                detectTransformGestures { _, pan, zoom, _ ->
+                                                    readerVM.onTransform(pan, zoom)
+                                                }
+                                            }
+                                            .graphicsLayer(
+                                                scaleX = uiState.scale,
+                                                scaleY = uiState.scale,
+                                                translationX = uiState.offset.x,
+                                                translationY = uiState.offset.y
+                                            ),
+                                        state = pagerState,
+                                    ) { page ->
+                                        ContentViewer(
+                                            data = uiState.htmlList[page],
+                                            padding = uiState.padding,
+                                            lineHeight = uiState.lineHeight,
+                                            letterSpacing = uiState.letterSpacing,
+                                            fontSize = uiState.fontSize,
+                                            currentPage = pagerState.currentPage + 1,
+                                            pageCount = pagerState.pageCount,
+                                            nightMode = uiState.nightMode,
+                                            backgroundColor = finalBackground,
+                                            isVerticalMode = false // [旧逻辑]
+                                        )
+
+                                        SideEffect {
+                                            readerVM.onPageChange(pagerState, scope)
+                                        }
+                                    }
+                                }
+                            } // [MODIFIED] 结束 `Box(alpha = ...)`
+                        } // [MODIFIED] 结束 `if (uiState.htmlList.isNotEmpty())`
+
+                        // --- 添加固定的顶部栏 ---
+                        if (uiState.isVerticalMode && !showSettings && uiState.htmlList.isNotEmpty()) {
+                            VerticalModeHeader(
+                                chapterTitle = currentChapterTitle,
+                                // [修改] currentPageIndex 是 0-based
+                                currentPage = currentPageIndex + 1,
+                                pageCount = uiState.htmlList.size,
+                                backgroundColor = finalBackground,
+                                padding = uiState.padding // 传入内边距以对齐
+                            )
                         }
                         // 设置页面
                         if (showSettings) {
@@ -321,8 +472,8 @@ fun ReaderPage(
                                                 uiState.backgroundColor
                                             )
                                             if (settingsOnOpen != settingsNow) {
-                                                val currentPage = pagerState.currentPage
-                                                readerVM.saveSettings(currentPage)
+                                                // [修改] 使用正确的 currentPageIndex (行或页)
+                                                readerVM.saveSettings(currentPageIndex)
                                             }
                                             showSettings = false
                                         }
@@ -395,22 +546,33 @@ fun ReaderPage(
                                     .fillMaxWidth()
                                     .align(Alignment.BottomCenter),
                                 uiState = uiState,
-                                pageCount = pagerState.pageCount,
-                                currentPage = pagerState.currentPage,
+                                // [修改] pageCount (总行数或总页数)
+                                pageCount = uiState.htmlList.size,
+                                // [修改] currentPage (当前行或当前页)
+                                currentPage = currentPageIndex,
                                 onSetView = { readerVM.onSetView(it) },
-                                onSetPage = {
+                                onSetPage = { pageIndex ->
                                     scope.launch {
-                                        pagerState.scrollToPage(it)
+                                        if (uiState.isVerticalMode) {
+                                            lazyListState.scrollToItem(pageIndex)
+                                        } else {
+                                            pagerState.scrollToPage(pageIndex)
+                                        }
                                     }
                                 },
                                 onSetFontSize = { readerVM.onSetFontSize(it) },
                                 onSetLineHeight = { readerVM.onSetLineHeight(it) },
                                 onSetPadding = { readerVM.onSetPadding(it) },
                                 onShowChapters = { readerVM.toggleChapterDrawer(true) },
-                                onSetBackgroundColor = { readerVM.onSetBackgroundColor(it) }
+                                onSetBackgroundColor = { readerVM.onSetBackgroundColor(it) },
+                                onSetReadingMode = { isVertical ->
+                                    readerVM.setReadingMode(isVertical, currentPageIndex)
+                                }
                             )
                         }
                     }
+                    // [修改] 如果 !hasLoaded，则此处为空白，等待 isLoading 遮罩
+                    // [修改] 如果 hasLoaded 但 htmlList 为空，也显示空白，等待数据
                 }
             }
         }
@@ -433,6 +595,8 @@ fun ReaderPage(
     }
 }
 
+// ... [ ReaderSettingsBar, ChapterDrawerContent, 和所有其他 Composable 保持不变 ] ...
+
 @Composable
 fun ReaderSettingsBar(
     modifier: Modifier = Modifier,
@@ -445,7 +609,8 @@ fun ReaderSettingsBar(
     onSetLineHeight: (lineHeight: TextUnit) -> Unit,
     onSetPadding: (padding: Dp) -> Unit,
     onShowChapters: () -> Unit,
-    onSetBackgroundColor: (color: Color?) -> Unit
+    onSetBackgroundColor: (color: Color?) -> Unit,
+    onSetReadingMode: (isVertical: Boolean) -> Unit
 ) {
     // 状态：用于控制显示主菜单还是二级“间距”菜单
     var showSpacingMenu by remember { mutableStateOf(false) }
@@ -463,9 +628,11 @@ fun ReaderSettingsBar(
         if (showSpacingMenu) {
             SpacingSettingsMenu(
                 uiState = uiState,
+                onSetFontSize = onSetFontSize,
                 onSetLineHeight = onSetLineHeight,
                 onSetPadding = onSetPadding,
-                onBack = { showSpacingMenu = false }
+                onBack = { showSpacingMenu = false },
+                onSetReadingMode = onSetReadingMode
             )
         } else {
             MainSettingsMenu(
@@ -474,7 +641,6 @@ fun ReaderSettingsBar(
                 currentPage = currentPage,
                 onSetView = onSetView,
                 onSetPage = onSetPage,
-                onSetFontSize = onSetFontSize,
                 onShowSpacingMenu = { showSpacingMenu = true },
                 onShowChapters = onShowChapters,
                 onSetBackgroundColor = onSetBackgroundColor
@@ -488,10 +654,15 @@ fun ChapterDrawerContent(
     drawerState: DrawerState,
     chapterList: List<ChapterInfo>,
     currentChapterTitle: String?,
+    pageCount: Int, // [新增]
+    isVerticalMode: Boolean, // [新增]
     onChapterClick: (index: Int) -> Unit
 ) {
     val lazyListState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // [修改] pageCount (总行/页数)
+    val totalItems = pageCount.coerceAtLeast(1)
 
     val currentChapterIndex = remember(currentChapterTitle, chapterList) {
         chapterList.indexOfFirst { it.title == currentChapterTitle }.coerceAtLeast(0)
@@ -524,6 +695,15 @@ fun ChapterDrawerContent(
                 key = { _, chapter -> "${chapter.title}_${chapter.startIndex}" }
             ) { index, chapter ->
                 val isSelected = index == currentChapterIndex
+
+                // [新增] 计算百分比或页码
+                val percent = (chapter.startIndex.toFloat() / totalItems) * 100f
+                val pageLabel = if (isVerticalMode) {
+                    "${percent.roundToInt()}%"
+                } else {
+                    "第 ${chapter.startIndex + 1} 页"
+                }
+
                 NavigationDrawerItem(
                     label = {
                         Column {
@@ -533,7 +713,7 @@ fun ChapterDrawerContent(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "第 ${chapter.startIndex + 1} 页",
+                                text = pageLabel, // [修改]
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -552,19 +732,32 @@ fun ChapterDrawerContent(
 @Composable
 private fun MainSettingsMenu(
     uiState: ReaderState,
-    pageCount: Int,
-    currentPage: Int,
+    pageCount: Int, // [修改] 这是总行数或总页数
+    currentPage: Int, // [修改] 这是当前行索引或页索引 (0-based)
     onSetView: (view: Int) -> Unit,
     onSetPage: (page: Int) -> Unit,
-    onSetFontSize: (fontSize: TextUnit) -> Unit,
     onShowSpacingMenu: () -> Unit,
     onShowChapters: () -> Unit,
     onSetBackgroundColor: (color: Color?) -> Unit
 ) {
-    // 用于平滑拖动 Slider，仅在拖动结束后才触发翻页
-    var sliderPage by remember(currentPage) {
-        mutableFloatStateOf(currentPage.toFloat())
+    // [修改] 模式判断
+    val isVerticalMode = uiState.isVerticalMode
+
+    // [修改] 滑块逻辑
+    // 1. 确定滑块的 "值" (百分比或页索引)
+    val sliderValue = if (isVerticalMode) uiState.currentPercentage else currentPage.toFloat()
+    // 2. 确定滑块的 "范围"
+    val sliderRange =
+        if (isVerticalMode) 0f..100f else 0f..(pageCount - 1).toFloat().coerceAtLeast(0f)
+    // 3. 确定滑块的 "步数" (100% / 100 步, N 页 / (N-1) 步)
+    val sliderSteps =
+        if (isVerticalMode) 98 else (pageCount - 2).coerceAtLeast(0) // 98 steps = 99 intervals
+
+    // 4. 滑块的瞬时状态
+    var sliderPos by remember(sliderValue) { // [修改] Keyed on sliderValue
+        mutableFloatStateOf(sliderValue)
     }
+
     // 控制网页跳转弹窗的显示
     var showWebViewPageSelector by remember { mutableStateOf(false) }
     // 协程作用域
@@ -627,10 +820,17 @@ private fun MainSettingsMenu(
             }
         }
 
-        // 阅读器翻页Slider
+        // [修改] 统一的阅读器进度Slider
         Column(modifier = Modifier.fillMaxWidth()) {
+            // 5. 确定滑块 "显示的文本"
+            val displayText = if (isVerticalMode) {
+                "${sliderPos.roundToInt()}%"
+            } else {
+                "${sliderPos.roundToInt() + 1} / $pageCount"
+            }
+
             Text(
-                text = "页数: ${sliderPage.roundToInt() + 1} / $pageCount",
+                text = displayText, // [修改]
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
@@ -639,52 +839,60 @@ private fun MainSettingsMenu(
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
                     .align(Alignment.CenterHorizontally),
-                value = sliderPage,
-                onValueChange = { sliderPage = it },
+                value = sliderPos, // [修改]
+                onValueChange = { sliderPos = it }, // [修改]
                 onValueChangeFinished = {
-                    onSetPage(sliderPage.roundToInt())
+                    // [修改] 6. 结束拖动时，计算目标 *索引*
+                    val targetIndex = if (isVerticalMode) {
+                        (sliderPos / 100f * pageCount.coerceAtLeast(1).toFloat())
+                            .toInt().coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+                    } else {
+                        sliderPos.roundToInt()
+                    }
+                    onSetPage(targetIndex)
                 },
-                valueRange = 0f..(pageCount - 1).toFloat().coerceAtLeast(0f),
-                steps = (pageCount - 2).coerceAtLeast(0) // 步数
+                valueRange = sliderRange, // [修改]
+                steps = sliderSteps // [修改]
             )
         }
 
 
-        // 字体和间距
+        // 缓存和间距
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .height(48.dp)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            Spacer(modifier = Modifier.weight(0.03f))
-            // 左侧：字体调节
-            SettingAdjuster(
-                label = "字体",
-                value = "${uiState.fontSize.value.roundToInt()}",
-                onDecrease = {
-                    val newSize = (uiState.fontSize.value - 1f).coerceAtLeast(12f)
-                    onSetFontSize(newSize.sp)
-                },
-                onIncrease = {
-                    val newSize = (uiState.fontSize.value + 1f).coerceAtMost(40f)
-                    onSetFontSize(newSize.sp)
-                },
-                modifier = Modifier.weight(1.77f)
-            )
+            // 左侧：缓存按钮
+            Button(
+                onClick = { /* TODO: 占位，实现缓存逻辑 */ },
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_cache),
+                    contentDescription = "缓存",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("缓存")
+            }
 
-            // 右侧：间距按钮
+            Spacer(Modifier.width(24.dp))
+
+            // 右侧：页面设置按钮
             Button(
                 onClick = onShowSpacingMenu,
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
-                modifier = Modifier
-                    .weight(1.14f)
+                modifier = Modifier.weight(1f)
             ) {
-                Text("间距")
+                Text("页面设置")
             }
-            Spacer(modifier = Modifier.weight(0.06f))
         }
+
         // 背景颜色选择
         Spacer(modifier = Modifier.height(8.dp))
         ColorSwatchRow(
@@ -854,14 +1062,17 @@ private fun RowScope.ColorSwatch(
 }
 
 /**
- * 二级菜单 - 间距调节 (行高, 页距)
+ * 二级菜单 - 页面设置 (行高, 页距)
+ * 添加了字体设置和阅读模式
  */
 @Composable
 private fun SpacingSettingsMenu(
     uiState: ReaderState,
+    onSetFontSize: (fontSize: TextUnit) -> Unit,
     onSetLineHeight: (lineHeight: TextUnit) -> Unit,
     onSetPadding: (padding: Dp) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSetReadingMode: (isVertical: Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -876,7 +1087,7 @@ private fun SpacingSettingsMenu(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
             }
             Text(
-                text = "间距调节",
+                text = "页面设置",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 8.dp)
             )
@@ -884,13 +1095,87 @@ private fun SpacingSettingsMenu(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        val minLineHeight = (uiState.fontSize.value * 1.6f)
-        val maxLineHeight = (uiState.fontSize.value * 3.0f)
+        // 字体和阅读模式行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // 左侧：字体调节
+            SettingAdjuster(
+                label = "字体",
+                value = "${uiState.fontSize.value.roundToInt()}",
+                onDecrease = {
+                    val newSize = (uiState.fontSize.value - 1f).coerceAtLeast(12f)
+                    onSetFontSize(newSize.sp)
+                },
+                onIncrease = {
+                    val newSize = (uiState.fontSize.value + 1f).coerceAtMost(40f)
+                    onSetFontSize(newSize.sp)
+                },
+                modifier = Modifier.weight(1f) // 占据左侧空间
+            )
+
+            // 右侧：阅读模式选项
+            Text(
+                text = "模式",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.align(Alignment.CenterVertically)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                // 占位符状态，默认为竖屏 (false)
+                val isVerticalMode = uiState.isVerticalMode
+                // 横屏按钮
+                IconToggleButton(
+                    checked = !isVerticalMode,
+                    onCheckedChange = { onSetReadingMode(false) },
+                    colors = IconButtonDefaults.iconToggleButtonColors(
+                        // 选中时的颜色
+                        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                            alpha = 0.5f
+                        ),
+                        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_swap_horiz),
+                        contentDescription = "横屏"
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                // 竖屏按钮
+                IconToggleButton(
+                    checked = isVerticalMode,
+                    onCheckedChange = { onSetReadingMode(true) },
+                    colors = IconButtonDefaults.iconToggleButtonColors(
+                        // 选中时的颜色
+                        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                            alpha = 0.5f
+                        ),
+                        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_swap_vert),
+                        contentDescription = "竖屏"
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp)) // 保留原有的间距
+
+        val minLineHeight = (uiState.fontSize.value * 1.5f).coerceAtLeast(18f)
+        val maxLineHeight = 100f
         SettingsSlider(
             label = "行距",
             value = uiState.lineHeight.value,
             valueRange = minLineHeight..maxLineHeight,
-            steps = 9,
+            steps = 14,
             onValueChange = { onSetLineHeight(it.sp) },
             showValue = false,
             startLabel = "小",
@@ -902,7 +1187,7 @@ private fun SpacingSettingsMenu(
         SettingsSlider(
             label = "页距",
             value = uiState.padding.value,
-            valueRange = 10f..60f, // 0dp 到 40dp
+            valueRange = 15f..65f, // 15dp 到 65dp
             steps = 9, // 10个档位
             onValueChange = { onSetPadding(it.dp) },
             showValue = false,
@@ -912,6 +1197,65 @@ private fun SpacingSettingsMenu(
     }
 }
 
+@Composable
+private fun VerticalModeHeader(
+    chapterTitle: String?,
+    currentPage: Int, // [修改] 这是 1-based 索引
+    pageCount: Int, // [修改] 这是总行数
+    backgroundColor: Color,
+    padding: Dp
+) {
+    val chapterTitleHeight = 24.dp
+
+    // [修改] 计算百分比
+    val totalItems = pageCount.coerceAtLeast(1)
+    // currentPage 是 1-based, 索引是 (currentPage - 1)
+    val percent = ((currentPage.toFloat() - 1) / totalItems) * 100f
+
+    // 使用 Surface 来实现背景遮挡和阴影
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(chapterTitleHeight)
+            // 裁切掉阴影，避免在透明背景时看起来奇怪
+            .clip(RectangleShape),
+        // 使用带一点透明度的背景色，使其在内容滚动时有轻微区分
+        color = backgroundColor.copy(alpha = 0.9f),
+        shadowElevation = 2.dp // 添加一点阴影
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                // 关键：使用从 uiState 传入的 padding 来对齐 ContentViewer 的内边距
+                .padding(horizontal = padding),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 章节标题（左）
+            chapterTitle?.takeIf { it.isNotBlank() && it != "footer" }?.let { title ->
+                Text(
+                    text = title,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 1.dp, top = 4.dp, end = 7.dp),
+                    textAlign = TextAlign.Start
+                )
+            } ?: Spacer(modifier = Modifier.weight(1f))
+
+            // 页码（右）
+            Text(
+                text = "${percent.roundToInt()}%", // [修改]
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 1.dp, top = 4.dp, end = 4.dp),
+                textAlign = TextAlign.End
+            )
+        }
+    }
+}
 
 /**
  * 通用组件：带标签的 Slider，用于页距、行距

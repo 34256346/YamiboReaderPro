@@ -1,3 +1,5 @@
+// novel/ui/vm/ReaderVM.kt
+
 package org.shirakawatyu.yamibo.novel.ui.vm
 
 import android.util.Log
@@ -69,7 +71,10 @@ class ReaderVM : ViewModel() {
     private var isPreloading = false
 
     // 预加载阈值，当距离页面底部还有多少距离时触发预加载
-    private val PRELOAD_THRESHOLD = 50
+    // [修改] 竖屏用 1000 (行), 横屏用 100 (页)
+    private val PRELOAD_THRESHOLD_VERTICAL = 1000
+    private val PRELOAD_THRESHOLD_HORIZONTAL = 100
+
 
     // 正在预加载的视图索引
     private var viewBeingPreloaded = 0
@@ -106,7 +111,8 @@ class ReaderVM : ViewModel() {
                     padding = (settings?.paddingDp ?: 16f).dp,
                     nightMode = settings?.nightMode ?: false,
                     backgroundColor = bgColor,
-                    loadImages = settings?.loadImages ?: false
+                    loadImages = settings?.loadImages ?: false,
+                    isVerticalMode = settings?.isVerticalMode ?: false
                 )
                 loadWithSettings()
             }
@@ -122,6 +128,17 @@ class ReaderVM : ViewModel() {
         }
     }
 
+    // [修改] 增加一个辅助函数来计算横屏页的平均行数
+    private fun getAvgItemsPerHorizontalPage(): Int {
+        val state = _uiState.value
+        val topPadding = 24.dp
+        val footerHeight = 50.dp
+        val pageContentHeight = maxHeight - topPadding - footerHeight
+        val pageContentHeightPx = ValueUtil.dpToPx(pageContentHeight)
+        val lineHeightPx = ValueUtil.spToPx(state.lineHeight)
+        return (pageContentHeightPx / lineHeightPx).toInt().coerceAtLeast(1)
+    }
+
     // 加载页面数据
     private fun loadWithSettings() {
         viewModelScope.launch {
@@ -129,8 +146,21 @@ class ReaderVM : ViewModel() {
             FavoriteUtil.getFavoriteMap { favMap ->
                 val favorite = favMap[url]
                 val targetView = favorite?.lastView ?: 1
-                val targetPage = favorite?.lastPage ?: 0
+                // [MODIFICATION] This is now a "page number", not necessarily an index
+                val targetPageNum = favorite?.lastPage ?: 0
                 currentAuthorId = favorite?.authorId
+
+                // [MODIFICATION] Calculate the target *index* based on the loaded mode
+                val targetIndex: Int
+                if (_uiState.value.isVerticalMode) {
+                    // Convert page number back to an estimated row index
+                    val avgItemsPerPage = getAvgItemsPerHorizontalPage()
+                    targetIndex = (targetPageNum * avgItemsPerPage)
+                } else {
+                    // In horizontal mode, page number *is* the index
+                    targetIndex = targetPageNum
+                }
+
                 // 从缓存中获取页面数据
                 CacheUtil.getCache(url, targetView) { cacheData ->
                     if (cacheData != null) {
@@ -143,27 +173,31 @@ class ReaderVM : ViewModel() {
                             )
                             currentAuthorId = cacheData.authorId
                         }
+                        // [MODIFICATION] 从这里移除 initPage 的设置
                         _uiState.value = _uiState.value.copy(
                             currentView = targetView,
-                            initPage = targetPage,
+                            // initPage = targetIndex, // <-- [REMOVED]
                             maxWebView = cacheData.maxPageNum
                         )
                         currentAuthorId = cacheData.authorId
 
+                        // [MODIFICATION] 将 targetIndex 传递给 loadFinished
                         loadFinished(
                             success = true,
                             cacheData.htmlContent,
                             null,
                             cacheData.maxPageNum,
-                            isFromCache = true
+                            isFromCache = true,
+                            cacheTargetIndex = targetIndex // <-- [ADDED]
                         )
                     } else {
                         // 缓存未命中：从网络加载数据并更新UI状态
                         Log.i(logTag, "Cache miss. Loading page $targetView from network.")
 
+                        // [MODIFICATION] 缓存未命中时，initPage 保持在这里设置
                         _uiState.value = _uiState.value.copy(
                             currentView = targetView,
-                            initPage = targetPage
+                            initPage = targetIndex // [MODIFIED] Use targetIndex
                         )
 
                         loadFromNetwork(targetView)
@@ -216,13 +250,15 @@ class ReaderVM : ViewModel() {
      * 分页处理
      * 缓存管理
      * UI状态更新
+     * [MODIFICATION] 增加 cacheTargetIndex 参数
      */
     fun loadFinished(
         success: Boolean,
         html: String,
         loadedUrl: String?,
         maxPage: Int,
-        isFromCache: Boolean = false
+        isFromCache: Boolean = false,
+        cacheTargetIndex: Int = 0 // <-- [ADDED]
     ) {
         viewModelScope.launch {
             // 如果加载失败
@@ -283,22 +319,29 @@ class ReaderVM : ViewModel() {
                     )
                     CacheUtil.saveCache(url, dataToCache)
                 }
-                // 计算初始展示页码
+
+                // [修改] 计算初始展示页码(索引)和百分比
                 val newInitPage = if (isFromCache) {
-                    // 如果是从缓存加载，则使用当前UI状态中的初始页面
-                    _uiState.value.initPage
+                    // _uiState.value.initPage // <-- [OLD]
+                    cacheTargetIndex // <-- [NEW] 使用传递过来的 cacheTargetIndex
                 } else if (initialized) {
-                    // 如果已经初始化完成，则从第0页开始
-                    0
+                    0 // 已初始化 (例如换页)，从 0 开始
                 } else {
-                    // 其他情况下使用当前UI状态中的初始页面
-                    _uiState.value.initPage
+                    _uiState.value.initPage // 首次加载，使用 vm 已有的 targetIndex
                 }
-                // 更新UI状态
+
+                val totalItems = passages.size.coerceAtLeast(1)
+                // [修改] 确保 newInitPage 在范围内
+                val safeInitPage = newInitPage.coerceIn(0, (totalItems - 1).coerceAtLeast(0))
+
+                val newPercent = (safeInitPage.toFloat() / totalItems) * 100f
+
+                // [MODIFICATION] 这是关键：htmlList 和 initPage 在同一次更新中被设置
                 _uiState.value = _uiState.value.copy(
                     htmlList = passages,
                     chapterList = chapters,
-                    initPage = newInitPage,
+                    initPage = safeInitPage,
+                    currentPercentage = newPercent, // [新增]
                     maxWebView = maxPage,
                     isError = false
                 )
@@ -306,7 +349,7 @@ class ReaderVM : ViewModel() {
                 if (!initialized) {
                     initialized = true
                 }
-                latestPage = newInitPage
+                latestPage = safeInitPage
                 if (!isFromCache) {
                     showLoadingScrim = false
                 }
@@ -393,47 +436,88 @@ class ReaderVM : ViewModel() {
 
     // 对原始内容列表进行分页处理，生成可用于页面显示的内容列表和章节信息。
     private fun paginateContent(isFromCache: Boolean = false): Pair<List<Content>, List<ChapterInfo>> {
-        val passages = ArrayList<Content>()
+        // rawContentList的快照
+        val contentSnapshot = rawContentList.toList()
         val state = _uiState.value
-        // 计算页面内容区域的可用高度和宽度，用于文本分页
-        val topPadding = 16.dp
-        val footerHeight = 30.dp
-        val pageContentHeight = maxHeight - topPadding - footerHeight
-        val pageContentWidth = maxWidth - (state.padding + state.padding)
-        // 遍历原始内容列表，对文本内容进行分页处理，图片内容直接添加
-        for (content in rawContentList) {
-            if (content.type == ContentType.TEXT) {
-                val pagedText = TextUtil.pagingText(
-                    content.data,
-                    pageContentHeight,
-                    pageContentWidth,
-                    state.fontSize,
-                    state.letterSpacing,
-                    state.lineHeight,
-                )
-                for (t in pagedText) {
-                    passages.add(Content(t, ContentType.TEXT, content.chapterTitle))
-                }
-            } else if (content.type == ContentType.IMG) {
-                passages.add(content)
+
+        val passages: List<Content>
+
+        // [修改] 根据模式选择分页算法
+        if (state.isVerticalMode) {
+            // --- 竖屏滚动模式 ---
+            // 1. 计算可用宽度
+            val pageContentWidth = maxWidth - (state.padding + state.padding)
+
+            // 2. 调用新的分行算法
+            val lines = TextUtil.pagingTextVertical(
+                rawContentList = contentSnapshot,
+                width = pageContentWidth,
+                fontSize = state.fontSize,
+                letterSpacing = state.letterSpacing
+            ).toMutableList() // 转换为 MutableList 以添加页脚
+
+            // 3. 添加页脚
+            if (isTransitioning) {
+                // 正在转场中
+            } else if (isFromCache) {
+                lines.add(Content("正在加载下一页...", ContentType.TEXT, "footer"))
+            } else if (nextHtmlList != null) {
+                lines.add(Content("...下一页", ContentType.TEXT, "footer"))
+            } else if (uiState.value.currentView < uiState.value.maxWebView) {
+                lines.add(Content("正在加载下一页...", ContentType.TEXT, "footer"))
+            } else {
+                lines.add(Content("...没有更多了", ContentType.TEXT, "footer"))
             }
-        }
-        // 根据当前状态显示不同的提示信息
-        if (isTransitioning) {
-            // 正在转场中
-        } else if (isFromCache) {
-            passages.add(Content("正在加载下一页...", ContentType.TEXT, "footer"))
-        } else if (nextHtmlList != null) {
-            passages.add(Content("...下一页", ContentType.TEXT, "footer"))
-        } else if (uiState.value.currentView < uiState.value.maxWebView) {
-            passages.add(Content("正在加载下一页...", ContentType.TEXT, "footer"))
+            passages = lines
+
         } else {
-            passages.add(Content("...没有更多了", ContentType.TEXT, "footer"))
+            // --- 横屏翻页模式 (旧逻辑) ---
+            val passagesList = ArrayList<Content>()
+            // [修改] 使用 getAvgItemsPerHorizontalPage 内部的逻辑来计算
+            val topPadding = 24.dp
+            val footerHeight = 50.dp
+            val pageContentHeight = maxHeight - topPadding - footerHeight
+            val pageContentWidth = maxWidth - (state.padding + state.padding)
+            // 遍历原始内容列表，对文本内容进行分页处理，图片内容直接添加
+            for (content in contentSnapshot) {
+                if (content.type == ContentType.TEXT) {
+                    val pagedText = TextUtil.pagingText(
+                        content.data,
+                        pageContentHeight,
+                        pageContentWidth,
+                        state.fontSize,
+                        state.letterSpacing,
+                        state.lineHeight,
+                    )
+                    for (t in pagedText) {
+                        passagesList.add(Content(t, ContentType.TEXT, content.chapterTitle))
+                    }
+                } else if (content.type == ContentType.IMG) {
+                    passagesList.add(content)
+                }
+            }
+
+            // [修改] 根据当前状态显示不同的提示信息
+            if (isTransitioning) {
+                // 正在转场中
+            } else if (isFromCache) {
+                passagesList.add(Content("正在加载下一页...", ContentType.TEXT, "footer"))
+            } else if (nextHtmlList != null) {
+                passagesList.add(Content("...下一页", ContentType.TEXT, "footer"))
+            } else if (uiState.value.currentView < uiState.value.maxWebView) {
+                passagesList.add(Content("正在加载下一页...", ContentType.TEXT, "footer"))
+            } else {
+                passagesList.add(Content("...没有更多了", ContentType.TEXT, "footer"))
+            }
+            passages = passagesList
         }
+
+        // --- 章节列表构建 (通用逻辑) ---
         // 构建章节信息列表，记录每个章节标题在内容列表中的起始索引
         val chapterList = mutableListOf<ChapterInfo>()
         var lastTitle: String? = null
         passages.forEachIndexed { index, content ->
+            // [修改] 章节索引现在指向 *行索引* (竖屏) 或 *页索引* (横屏)
             if (content.chapterTitle != null && content.chapterTitle != lastTitle && content.chapterTitle != "footer") {
                 chapterList.add(ChapterInfo(title = content.chapterTitle, startIndex = index))
                 lastTitle = content.chapterTitle
@@ -441,6 +525,83 @@ class ReaderVM : ViewModel() {
         }
 
         return Pair(passages, chapterList)
+    }
+
+    /**
+     * 处理页面变化的共享逻辑（保存历史、预加载、切换到预加载的页面）
+     */
+    private fun processPageChange(newPage: Int) {
+        val oldPage = latestPage
+        val state = _uiState.value
+        val list = state.htmlList
+
+        // 保存历史
+        if (list.isNotEmpty() && newPage < list.size && oldPage >= 0 && oldPage < list.size) {
+            val oldChapter = list[oldPage].chapterTitle
+            val newChapter = list[newPage].chapterTitle
+
+            // [修改] 仅在章节变化时保存 (竖屏模式下)
+            // (横屏模式下，每次翻页都会保存)
+            if (newChapter != null && newChapter != oldChapter) {
+                saveHistory(newPage)
+            } else if (!state.isVerticalMode) {
+                // 如果是横屏，且不在转场中，每次都保存
+                if (!isTransitioning) {
+                    saveHistory(newPage)
+                }
+            }
+        }
+
+        val listSize = list.size
+        // 检查是否需要切换到已预加载的下一页
+        if (listSize > 0 &&
+            newPage == listSize - 1 && // (检查是否是最后 [加载更多] 页面)
+            nextHtmlList != null &&
+            !isTransitioning // 再次检查
+        ) {
+            isTransitioning = true
+            val newCurrentView = state.currentView + 1
+
+            Log.i(logTag, "Switching to preloaded page $newCurrentView")
+
+            // [修改] 切换时重置百分比
+            _uiState.value = state.copy(
+                htmlList = nextHtmlList!!,
+                chapterList = nextChapterList ?: listOf(),
+                initPage = 0,
+                currentPercentage = 0f, // [新增]
+                currentView = newCurrentView
+            )
+
+            nextHtmlList = null
+            nextChapterList = null
+            latestPage = 0 // 重置
+
+            return // 完成切换，不需要执行后续逻辑
+        }
+
+        // 检查是否需要触发预加载
+        val lastContentPageIndex = (listSize - 2).coerceAtLeast(0)
+        // [修改] 竖屏模式下，阈值应该基于行数，横屏模式下基于页数
+        val threshold =
+            if (state.isVerticalMode) PRELOAD_THRESHOLD_VERTICAL else PRELOAD_THRESHOLD_HORIZONTAL
+        val triggerPageIndex = (lastContentPageIndex - threshold).coerceAtLeast(0)
+
+        if (listSize > 0 &&
+            !isPreloading &&
+            nextHtmlList == null &&
+            state.currentView < state.maxWebView &&
+            !isTransitioning && // 再次检查
+            newPage >= triggerPageIndex // 关键：当滚动到触发点
+        ) {
+            val viewToPreload = state.currentView + 1
+            Log.i(logTag, "newPage $newPage triggerPageIndex $triggerPageIndex")
+            Log.i(logTag, "Preloading view $viewToPreload")
+            triggerPreload(viewToPreload, state.maxWebView)
+        }
+
+        // 更新最新页面
+        latestPage = newPage
     }
 
     /**
@@ -469,82 +630,88 @@ class ReaderVM : ViewModel() {
                 return
             }
         }
-        val oldPage = latestPage
+
+        // 检查
         val list = _uiState.value.htmlList
-
-        if (newPage != oldPage && list.isNotEmpty() && newPage < list.size && oldPage >= 0 && oldPage < list.size) {
-            val oldChapter = list[oldPage].chapterTitle
-            val newChapter = list[newPage].chapterTitle
-
-            if (newChapter != null && newChapter != oldChapter) {
-                saveHistory(newPage)
+        // 如果页面没变 (latestPage)，或者列表无效，则不处理
+        if (newPage == latestPage || list.isEmpty() || newPage >= list.size) {
+            // 但要处理缩放重置
+            if (curPagerState.settledPage != curPagerState.targetPage && _uiState.value.scale != 1f) {
+                _uiState.value = _uiState.value.copy(scale = 1f, offset = Offset(0f, 0f))
             }
-        }
-        val listSize = uiState.value.htmlList.size
-        // 判断是否需要切换到预加载的下一页内容
-        if (listSize > 0 &&
-            newPage == listSize - 1 &&
-            curPagerState.currentPage == listSize - 1 &&
-            nextHtmlList != null &&
-            !isTransitioning
-        ) {
-            isTransitioning = true
-            val newCurrentView = uiState.value.currentView + 1
-
-            Log.i(logTag, "Switching to preloaded page $newCurrentView")
-
-            _uiState.value = _uiState.value.copy(
-                htmlList = nextHtmlList!!,
-                chapterList = nextChapterList ?: listOf(),
-                initPage = 0,
-                currentView = newCurrentView
-            )
-
-            nextHtmlList = null
-            nextChapterList = null
-            latestPage = 0
-
             return
         }
-        // 计算触发预加载的页面索引阈值
-        val lastContentPageIndex = (listSize - 2).coerceAtLeast(0)
-        val triggerPageIndex = (lastContentPageIndex - PRELOAD_THRESHOLD).coerceAtLeast(0)
-        // 判断是否满足预加载条件并触发预加载
-        if (listSize > 0 &&
-            !isPreloading &&
-            nextHtmlList == null &&
-            uiState.value.currentView < uiState.value.maxWebView &&
-            !isTransitioning &&
-            newPage >= triggerPageIndex
-        ) {
 
-            val viewToPreload = uiState.value.currentView + 1
-            Log.i(logTag, "newPage$newPage triggerPageIndex$triggerPageIndex")
-            Log.i(logTag, "Preloading view $viewToPreload")
-            triggerPreload(viewToPreload, uiState.value.maxWebView)
-        }
+        // --- 页面已变化，且不在转场中 ---
 
-        latestPage = newPage
+        // [新增] 更新百分比
+        val totalPages = curPagerState.pageCount.coerceAtLeast(1)
+        val percent = (newPage.toFloat() / totalPages) * 100f
+        _uiState.value = _uiState.value.copy(currentPercentage = percent)
+
+        processPageChange(newPage)
 
         if (curPagerState.settledPage != curPagerState.targetPage && _uiState.value.scale != 1f) {
             _uiState.value = _uiState.value.copy(scale = 1f, offset = Offset(0f, 0f))
         }
     }
 
+    /**
+     * (新函数) 当竖屏滚动时调用
+     * 仅当页面 *稳定* 在新索引时才应调用
+     */
+    fun onVerticalPageSettled(newPage: Int) {
+        if (isTransitioning) {
+            // 如果是转场到新网页，我们只关心转场是否在 initPage 结束
+            if (newPage == _uiState.value.initPage) {
+                Log.i(
+                    logTag,
+                    "Transition complete (Vertical). Settled at page ${_uiState.value.initPage}"
+                )
+                isTransitioning = false
+                latestPage = _uiState.value.initPage
+            }
+            return // 在转场期间，忽略其他页面变化
+        }
+
+        if (newPage == latestPage) return // 索引未变化
+
+        // [新增] 更新百分比
+        val totalRows = _uiState.value.htmlList.size.coerceAtLeast(1)
+        val percent = (newPage.toFloat() / totalRows) * 100f
+        _uiState.value = _uiState.value.copy(currentPercentage = percent)
+
+        processPageChange(newPage)
+    }
+
     // 保存阅读历史记录
-    private fun saveHistory(pageToSave: Int) {
+    private fun saveHistory(pageToSave: Int) { // pageToSave is the index (row/page)
         val currentList = _uiState.value.htmlList
         var currentChapter: String? = null
         // 获取当前页面的章节标题
         if (pageToSave >= 0 && pageToSave < currentList.size) {
             currentChapter = currentList[pageToSave].chapterTitle
         }
+
+        // [MODIFICATION] Calculate the value to save based on mode
+        val state = _uiState.value
+        val valueToSave: Int
+
+        if (state.isVerticalMode) {
+            // In vertical mode, convert row index to an equivalent page number
+            val avgItemsPerPage = getAvgItemsPerHorizontalPage()
+            valueToSave = (pageToSave.toFloat() / avgItemsPerPage.toFloat()).toInt()
+        } else {
+            // In horizontal mode, the index *is* the page number
+            valueToSave = pageToSave
+        }
+
         // 更新收藏夹中的历史记录信息
         FavoriteUtil.getFavoriteMap {
             it[url]?.let { it1 ->
                 FavoriteUtil.updateFavorite(
                     it1.copy(
-                        lastPage = pageToSave,
+                        lastPage = valueToSave, // [MODIFIED] Save the calculated value
                         lastView = uiState.value.currentView,
                         lastChapter = currentChapter,
                         authorId = this.currentAuthorId
@@ -565,7 +732,8 @@ class ReaderVM : ViewModel() {
             state.padding.value,
             state.nightMode,
             backgroundColorString,
-            state.loadImages
+            state.loadImages,
+            state.isVerticalMode // [重要] 保存当前模式
         )
         SettingsUtil.saveSettings(settings)
     }
@@ -576,26 +744,50 @@ class ReaderVM : ViewModel() {
 
         viewModelScope.launch {
             showLoadingScrim = true
-            // 获取旧的总页数
-            val oldPageCount = _uiState.value.htmlList.size
-            // 在后台线程中重新分页内容
+
+            // [修改] 计算旧的百分比，用于模式切换
+            val oldPageCount = _uiState.value.htmlList.size.coerceAtLeast(1)
+            val oldPercent = currentPage.toFloat() / oldPageCount
+
+            // [修改] 查找旧章节信息 (基于索引，依然有效)
+            val (oldChapterTitle, oldItemInChapter) = if (currentPage >= 0 && currentPage < oldPageCount) {
+                val oldChapterTitle = _uiState.value.htmlList[currentPage].chapterTitle
+                val oldChapterStartIndex =
+                    _uiState.value.chapterList.find { it.title == oldChapterTitle }?.startIndex ?: 0
+                val oldItemInChapter = (currentPage - oldChapterStartIndex).coerceAtLeast(0)
+                Pair(oldChapterTitle, oldItemInChapter)
+            } else {
+                Pair(null, 0)
+            }
+
+            // 在后台线程中重新分页内容 (将使用 state 中 *新* 的 isVerticalMode)
             val (newPages, newChapters) = withContext(Dispatchers.Default) {
                 paginateContent()
             }
-            // 获取新的页面数量
-            val newPageCount = newPages.size
-            // 使用百分比逻辑和向下取整来计算新的滚动位置
-            val pageToScrollTo = if (oldPageCount > 0 && newPageCount > 0) {
-                // 计算出阅读进度百分比 (当前的页码 / 旧的总页数 = 0.1)
-                val progressPercentage = (currentPage + 1).toDouble() / oldPageCount.toDouble()
 
-                // 用百分比乘以新的总页数，得到新的页码
-                val newPageNumber = floor(progressPercentage * newPageCount).toInt()
-                // 确保索引在新页数的有效范围内
-                (newPageNumber - 1).coerceIn(0, (newPageCount - 1).coerceAtLeast(0))
+            val newPageCount = newPages.size.coerceAtLeast(1)
+
+            // [修改] 计算新的滚动位置
+            val pageToScrollTo = if (oldChapterTitle != null) {
+                // 1. 尝试找到新章节列表中的同一个章节
+                val newChapterStartIndex =
+                    newChapters.find { it.title == oldChapterTitle }?.startIndex ?: 0
+
+                // 2. 滚动到该章节的开头 + 旧的章内页码 (或行号)
+                (newChapterStartIndex + oldItemInChapter).coerceIn(
+                    0,
+                    (newPageCount - 1).coerceAtLeast(0)
+                )
             } else {
-                currentPage.coerceIn(0, (newPageCount - 1).coerceAtLeast(0))
+                // 如果找不到旧章节（例如列表为空），回退到百分比逻辑
+                (oldPercent * newPageCount).toInt().coerceIn(
+                    0,
+                    (newPageCount - 1).coerceAtLeast(0)
+                )
             }
+
+            // [新增] 计算新的百分比
+            val newPercent = (pageToScrollTo.toFloat() / newPageCount) * 100f
 
             // 确保在滚动回第一页时也清空偏移
             if (pageToScrollTo == 0) {
@@ -606,10 +798,22 @@ class ReaderVM : ViewModel() {
                 htmlList = newPages,
                 chapterList = newChapters,
                 initPage = pageToScrollTo, // 使用新计算出的页面索引
+                currentPercentage = newPercent, // [新增]
                 isError = false
             )
             showLoadingScrim = false
         }
+    }
+
+    fun setReadingMode(isVertical: Boolean, currentPage: Int) {
+        if (isVertical == _uiState.value.isVerticalMode) return
+        _uiState.value = _uiState.value.copy(
+            isVerticalMode = isVertical,
+            initPage = currentPage // [修改] 暂存 currentPage (旧索引)
+        )
+        // [修改] saveSettings 会使用新的 isVerticalMode 重新分页
+        // 并使用 currentPage (old 索引) 来计算新的 initPage (new 索引)
+        saveSettings(currentPage)
     }
 
     fun onTransform(pan: Offset, zoom: Float) {
@@ -634,6 +838,7 @@ class ReaderVM : ViewModel() {
                 htmlList = nextHtmlList!!,
                 chapterList = nextChapterList ?: listOf(),
                 initPage = 0,
+                currentPercentage = 0f, // [修改]
                 currentView = view
             )
             // 清理
@@ -656,9 +861,11 @@ class ReaderVM : ViewModel() {
                         Log.i(logTag, "Cache hit for page $view. Loading from cache.")
                         isTransitioning = true
 
+                        // [MODIFICATION] 从这里移除 initPage 的设置
                         _uiState.value = _uiState.value.copy(
                             currentView = view,
-                            initPage = 0,
+                            initPage = 0, // [修改] 假设缓存的网页总是从 0 索引开始
+                            currentPercentage = 0f, // [修改]
                             maxWebView = cacheData.maxPageNum
                         )
                         // 加载缓存的HTML
@@ -667,7 +874,8 @@ class ReaderVM : ViewModel() {
                             cacheData.htmlContent,
                             null,
                             cacheData.maxPageNum,
-                            isFromCache = true
+                            isFromCache = true,
+                            cacheTargetIndex = 0 // <-- [ADDED] 缓存的网页总是从 0 开始
                         )
 
                     } else {
@@ -688,7 +896,7 @@ class ReaderVM : ViewModel() {
 
     // 设置字体大小
     fun onSetFontSize(fontSize: TextUnit) {
-        val newMinLineHeight = (fontSize.value * 1.6f).sp
+        val newMinLineHeight = (fontSize.value * 1.5f).sp
         val currentLineHeight = _uiState.value.lineHeight
 
         if (currentLineHeight < newMinLineHeight) {
@@ -704,7 +912,7 @@ class ReaderVM : ViewModel() {
     // 设置行高
     fun onSetLineHeight(lineHeight: TextUnit) {
         val currentFontSizeValue = _uiState.value.fontSize.value
-        val newMinLineHeightValue = currentFontSizeValue * 1.6f
+        val newMinLineHeightValue = currentFontSizeValue * 1.5f
         val coercedLineHeightValue = lineHeight.value.coerceIn(
             minimumValue = newMinLineHeightValue,
             maximumValue = 100.0f
@@ -747,11 +955,18 @@ class ReaderVM : ViewModel() {
 
     // 退出时，保存当前页面的历史记录，清理预加载相关的数据列表
     override fun onCleared() {
-        saveHistory(latestPage)
+        // [MODIFICATION]
+        // 只有在VM成功初始化 (即至少成功加载过一次页面) 之后，
+        // 才在退出时保存历史记录。
+        // 这可以防止在加载失败或卡住时 (initialized=false)，
+        // 退出页面导致 latestPage(0) 覆盖掉
+        // 已有的收藏记录。
+        if (initialized) {
+            saveHistory(latestPage)
+        }
         nextHtmlList = null
         nextChapterList = null
         isPreloading = false
         super.onCleared()
     }
 }
-

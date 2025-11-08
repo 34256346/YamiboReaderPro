@@ -39,6 +39,8 @@ data class ChapterInfo(
  * @property nightMode 是否为夜间模式，默认为false
  * @property isError 是否发生错误，默认为false
  * @property backgroundColor 自定义背景颜色，null表示使用主题默认
+ * @property isVerticalMode 是否为竖屏滚动模式，默认为false
+ * @property currentPercentage 当前阅读百分比（竖直模式），默认为0f
  */
 data class ReaderState(
     val htmlList: List<Content> = listOf(),
@@ -58,5 +60,7 @@ data class ReaderState(
     val loadImages: Boolean = false,
     val nightMode: Boolean = false,
     val isError: Boolean = false,
-    val backgroundColor: Color? = null
+    val backgroundColor: Color? = null,
+    val isVerticalMode: Boolean = false,
+    val currentPercentage: Float = 0f,
 )
