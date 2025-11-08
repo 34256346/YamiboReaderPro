@@ -80,7 +80,7 @@ fun _300文学Theme(
 private val ReaderNightColorScheme = darkColorScheme(
     primary = Color(0xFFD0BCFF),      // 强调色 (来自默认的 Purple80)
     background = Color(0xFF212121),    // 页面背景 (来自 ContentViewer)
-    onBackground = Color(0xFFD0D0D0),  // 正文文字 (来自 ContentViewer 的 BDBDBD，稍亮)
+    onBackground = Color(0xFFC8C8C8),  // 正文文字
     surface = Color(0xFF333333),      // 设置栏、对话框、抽屉背景
     onSurface = Color(0xFFE0E0E0),      // 设置栏、对话框、抽屉上的文字
     surfaceVariant = Color(0xFF333333),  // 设置栏 Surface 背景
