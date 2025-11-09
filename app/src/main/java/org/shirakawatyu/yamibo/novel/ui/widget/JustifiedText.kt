@@ -108,8 +108,7 @@ fun JustifiedText(
 
                     // 判断是否为段落或页面的最后一行
                     val isLastLine =
-                        (index == lines.size - 1) || (lines[index + 1].isEmpty())
-
+                        (index < lines.size - 1 && lines[index + 1].isEmpty())
                     // 重置为基础间距，用于测量
                     textPaint.letterSpacing = baseLetterSpacingMultiplier
                     val originalWidth = textPaint.measureText(line)
