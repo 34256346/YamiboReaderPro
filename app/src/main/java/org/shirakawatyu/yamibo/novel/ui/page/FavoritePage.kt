@@ -175,7 +175,7 @@ fun FavoritePage(
                     ) {
                         Text("显示")
                     }
-                    Spacer(modifier = Modifier.width(36.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Button(onClick = { favoriteVM.toggleManageMode() }) {
                         Text("完成")
                     }
