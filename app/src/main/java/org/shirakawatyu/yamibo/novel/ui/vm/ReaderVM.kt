@@ -461,12 +461,17 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
     fun resetCacheProgress() {
         // 任何时候调用都隐藏对话框
         _cacheProgress.value = null
+        currentCacheSessionShowsProgress = false
+        Log.i(logTag, "Cache progress hidden by user. Switching to silent caching.")
     }
 
     // 重新显示缓存进度
     fun showCacheProgress() {
         // 仅当缓存正在运行且进度条被隐藏时
         if (_isDiskCaching.value && _cacheProgress.value == null) {
+            currentCacheSessionShowsProgress = true
+            Log.i(logTag, "Cache progress re-enabled by user.")
+
             // 重新构建进度条状态
             _cacheProgress.value = CacheProgress(
                 totalPages = diskCacheTotalPages,
