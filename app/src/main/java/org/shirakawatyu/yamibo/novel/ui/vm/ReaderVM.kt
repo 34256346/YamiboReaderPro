@@ -161,7 +161,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             "Starting disk cache for ${pagesToCache.size} pages, includeImages=$includeImages"
         )
 
-        _isDiskCaching.value = true
+        _isDiskCaching.value = true // [MODIFIED]
         diskCacheQueue = pagesToCache.toMutableSet()
         diskCacheIncludeImages = false // includeImages
         diskCacheTotalPages = pagesToCache.size
@@ -420,34 +420,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         }
     }
 
-    // 从HTML中提取最大页码
-    private fun extractMaxPageFromHtml(html: String): Int {
-        return try {
-            val doc = Jsoup.parse(html)
-            val selectors = listOf(
-                "select#dumppage option:last-child",
-                "select[id=dumppage] option:last-child",
-                ".pg a:last-child"
-            )
-            for (selector in selectors) {
-                val element = doc.select(selector).firstOrNull()
-                if (element != null) {
-                    val value = element.attr("value").ifEmpty { element.text() }
-                    val pageNum = value.toIntOrNull()
-                    if (pageNum != null && pageNum > 0) {
-                        Log.i(logTag, "Extracted maxPage=$pageNum using selector: $selector")
-                        return pageNum
-                    }
-                }
-            }
-            Log.w(logTag, "Could not extract maxPage from HTML, defaulting to 1")
-            1
-        } catch (e: Exception) {
-            Log.e(logTag, "Failed to extract maxPage from HTML", e)
-            1
-        }
-    }
-
     // 删除缓存页面
     fun deleteCachedPages(pagesToDelete: Set<Int>) {
         viewModelScope.launch {
@@ -658,14 +630,14 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         }
     }
 
-    // 修改 onSetView，优先检查本地缓存 (不变)
+    // 修改 onSetView，优先使用本地缓存 (不变)
     fun onSetView(view: Int, forceReload: Boolean = false) {
         if (view == _uiState.value.currentView && !isTransitioning && !forceReload) {
             Log.i(logTag, "Already on view $view. Ignoring.")
             return
         }
 
-        if (view == _uiState.value.currentView + 1 && nextHtmlList != null && !forceReload) {
+        if (view == _uiState.value.currentView + 1 && nextHtmlList != null && !forceReload) { // [MODIFIED] Added !forceReload
             Log.i(logTag, "Using preloaded content for view $view")
             isTransitioning = true
 
@@ -721,6 +693,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                         )
                         return@launch
                     }
+
                     // 本地缓存未命中，检查内存缓存
                     CacheUtil.getCache(url, view) { cacheData ->
                         viewModelScope.launch {
@@ -759,6 +732,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                         }
                     }
                 } else {
+                    // [MODIFIED] This block runs if forceReload is true
                     Log.i(logTag, "Force reloading page $view from network.")
                     loadFromNetwork(view)
                     isTransitioning = true
@@ -766,6 +740,8 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             }
         }
     }
+
+    // ==================== 以下是原有的其他方法 ====================
 
     private fun getAvgItemsPerHorizontalPage(): Int {
         val state = _uiState.value
@@ -846,7 +822,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                 paginateContent(isFromCache)
             }
 
-            // 内存缓存/预加载
             if (isPreloading) {
                 isPreloading = false
 
@@ -914,6 +889,8 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                 if (!isFromCache) {
                     showLoadingScrim = false
                 }
+                // 无论是否来自缓存，只要是 '正常加载' 完成，就应该结束 'Transition' 状态
+                isTransitioning = false
             }
         }
     }
@@ -1134,6 +1111,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         latestPage = newPage
     }
 
+    // [MODIFIED] 修复 'isTransitioning' 卡死的问题
     fun onPageChange(curPagerState: PagerState, scope: CoroutineScope) {
         if (pagerState == null) {
             pagerState = curPagerState
@@ -1145,18 +1123,53 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         val newPage = curPagerState.targetPage
 
         if (isTransitioning) {
-            if (curPagerState.settledPage == _uiState.value.initPage && newPage == _uiState.value.initPage) {
+            val isSettledAtInit =
+                curPagerState.settledPage == _uiState.value.initPage && newPage == _uiState.value.initPage
+
+            // [NEW] 检查用户是否中断了滚动：
+            // 1. 滚动已停止 (!isScrollInProgress)
+            // 2. 停止的页面 *不是* 我们期望的 initPage
+            val userInterrupted = !curPagerState.isScrollInProgress &&
+                    curPagerState.settledPage != _uiState.value.initPage &&
+                    curPagerState.settledPage == newPage // 确保已稳定
+
+            if (isSettledAtInit) {
+                // 这是 "成功" 的转场
                 Log.i(logTag, "Transition complete. Settled at page ${_uiState.value.initPage}")
                 isTransitioning = false
                 latestPage = _uiState.value.initPage
+                // 此处不能 return，需要让下面的逻辑（processPageChange）执行
+            } else if (userInterrupted) {
+                // 这是 "被用户中断" 的转场
+                Log.w(
+                    logTag,
+                    "User interrupted transition. Settled at page $newPage. Ending transition."
+                )
+                isTransitioning = false
+                latestPage = newPage // 将 'latestPage' 更新为用户选择的页面
             } else {
+                // 转场仍在进行中
+                // 此时不应处理页面变更逻辑（如预加载）
+                // 仅重置缩放
+                if (curPagerState.settledPage != curPagerState.targetPage && _uiState.value.scale != 1f) {
+                    _uiState.value = _uiState.value.copy(scale = 1f, offset = Offset(0f, 0f))
+                }
                 return
             }
         }
 
+
         val list = _uiState.value.htmlList
 
-        if (newPage == latestPage || list.isEmpty() || newPage >= list.size) {
+        if (list.isEmpty() || newPage >= list.size) {
+            if (curPagerState.settledPage != curPagerState.targetPage && _uiState.value.scale != 1f) {
+                _uiState.value = _uiState.value.copy(scale = 1f, offset = Offset(0f, 0f))
+            }
+            return
+        }
+
+        // 仅在页面真正改变时才处理 (修复了 isTransitioning 逻辑后，需要在这里加一个检查)
+        if (newPage == latestPage) {
             if (curPagerState.settledPage != curPagerState.targetPage && _uiState.value.scale != 1f) {
                 _uiState.value = _uiState.value.copy(scale = 1f, offset = Offset(0f, 0f))
             }
@@ -1176,15 +1189,13 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
 
     fun onVerticalPageSettled(newPage: Int) {
         if (isTransitioning) {
-            if (newPage == _uiState.value.initPage) {
-                Log.i(
-                    logTag,
-                    "Transition complete (Vertical). Settled at page ${_uiState.value.initPage}"
-                )
-                isTransitioning = false
-                latestPage = _uiState.value.initPage
-            }
-            return
+            // 只要它在转场期间稳定下来，就认为转场结束
+            Log.i(
+                logTag,
+                "Transition complete (Vertical). Settled at page $newPage"
+            )
+            isTransitioning = false
+            latestPage = newPage
         }
 
         if (newPage == latestPage) return
@@ -1200,10 +1211,11 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
      * 强制刷新当前正在查看的网页页面。
      * 1. 清除内存缓存。
      * 2. 触发UI刷新（将从网络重新加载并存入内存）。
-     * 3. 检查该页面是否已存在于磁盘缓存中：
+     * 3. 检查该页面是否已存在于 *磁盘* 缓存中：
      * - 如果是，则启动后台任务以替换磁盘缓存。
      * - 如果否，则不执行任何磁盘操作。
      */
+    // [MODIFIED] 修复无限加载BUG
     fun forceRefreshCurrentPage() {
         val pageToRefresh = _uiState.value.currentView
         val novelUrl = this.url
@@ -1215,13 +1227,27 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
 
         Log.i(logTag, "Force refreshing... URL: $novelUrl, Page: $pageToRefresh")
 
-        // 1. 清除内存缓存 (确保 onSetView 会从网络加载)
+        // 1. 清除内存缓存
         CacheUtil.clearCacheEntry(novelUrl, pageToRefresh)
 
-        // 2. 触发UI重载 (将从网络加载，并自动存入 *内存* 缓存)
-        onSetView(pageToRefresh, forceReload = true)
+        // 2. 触发UI重载
+        viewModelScope.launch {
+            // 清理预加载状态 (从 onSetView(forceReload=true) 中提取)
+            nextHtmlList = null
+            nextChapterList = null
+            isPreloading = false
 
-        // 3. 根据用户请求，检查是否需要更新缓存
+            // 使用 "about:blank" 技巧 (从 retryLoad 中提取)
+            showLoadingScrim = true
+            _uiState.value = _uiState.value.copy(
+                isError = false, // 清除错误状态
+                urlToLoad = "about:blank"
+            )
+            kotlinx.coroutines.delay(10) // 等待 recomposition
+            loadFromNetwork(pageToRefresh) // 加载真实 URL, 这会设置 isTransitioning = true
+        }
+
+        // 根据用户请求，检查是否需要更新本地缓存
         if (_cachedPages.value.contains(pageToRefresh)) {
             Log.i(
                 logTag,
@@ -1340,6 +1366,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                 isError = false
             )
             showLoadingScrim = false
+            isTransitioning = false // [MODIFIED] 确保在 saveSettings 后也重置
         }
     }
 
@@ -1415,6 +1442,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         )
     }
 
+    // [MODIFIED]
     override fun onCleared() {
         if (initialized) {
             saveHistory(latestPage)
@@ -1423,7 +1451,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         nextChapterList = null
         isPreloading = false
 
-        // 销毁后台WebView
+        // [NEW] 销毁后台 WebView
         viewModelScope.launch(Dispatchers.Main) {
             cacheWebView?.stopLoading()
             cacheWebView?.destroy()

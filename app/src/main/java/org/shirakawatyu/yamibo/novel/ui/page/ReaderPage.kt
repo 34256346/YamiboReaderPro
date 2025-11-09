@@ -341,33 +341,51 @@ fun ReaderPage(
                         // 定义一个key，当数据(列表)和目标页(initPage)都准备好时，这个key会更新
                         val dataKey =
                             "${uiState.htmlList.hashCode()}_${uiState.initPage}_${uiState.isVerticalMode}"
-                        // remember(dataKey): 当key变化时，此状态会重置为false
-                        var isInitialScrollDone by remember(dataKey) { mutableStateOf(false) }
+
+                        // 这个flag用于跟踪这个currentView的初始滚动是否已完成。
+                        var isInitialScrollDone by remember(uiState.currentView) {
+                            mutableStateOf(
+                                false
+                            )
+                        }
+
 
                         // 仅在hasLoaded且htmlList非空时才渲染内容
                         if (uiState.htmlList.isNotEmpty()) {
 
+                            // [MODIFIED]
                             // 此LaunchedEffect仅在dataKey变化时运行一次
+                            // 它现在会检查 isInitialScrollDone 和 isScrollInProgress
                             LaunchedEffect(dataKey) {
-                                if (uiState.isVerticalMode) {
-                                    if (lazyListState.firstVisibleItemIndex != uiState.initPage) {
-                                        // 立即滚动，不带动画
-                                        lazyListState.scrollToItem(uiState.initPage)
+                                // 1. 仅在 "初始滚动" 未完成时执行
+                                if (!isInitialScrollDone) {
+                                    if (uiState.isVerticalMode) {
+                                        // 2. 检查用户是否已在滚动
+                                        if (lazyListState.firstVisibleItemIndex != uiState.initPage && !lazyListState.isScrollInProgress) {
+                                            lazyListState.scrollToItem(uiState.initPage)
+                                        }
+                                    } else {
+                                        // 2. 检查用户是否已在滚动
+                                        if (pagerState.pageCount > uiState.initPage && // 确保 Pager 已更新
+                                            pagerState.currentPage != uiState.initPage &&
+                                            !pagerState.isScrollInProgress
+                                        ) {
+                                            pagerState.scrollToPage(uiState.initPage)
+                                        }
                                     }
-                                } else {
-                                    if (pagerState.currentPage != uiState.initPage) {
-                                        // 立即滚动，不带动画
-                                        pagerState.scrollToPage(uiState.initPage)
-                                    }
+                                    // 3. 无论是否真的执行了滚动（可能被 isScrollInProgress 阻止），
+                                    // 都将此flag设为 true，以防止 "跳回" Bug。
+                                    isInitialScrollDone = true
                                 }
-                                // 滚动完成后，标记为完成
-                                isInitialScrollDone = true
                             }
+
 
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .graphicsLayer(alpha = if (isInitialScrollDone) 1f else 0f)
+                                // [MODIFIED] 使用 isInitialScrollDone 可能会导致闪烁，
+                                // 最好是等待 Pager/LazyList 稳定
+                                // .graphicsLayer(alpha = if (isInitialScrollDone) 1f else 0f)
                             ) {
                                 if (uiState.isVerticalMode) {
                                     // 竖屏滚动模式
