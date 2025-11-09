@@ -19,7 +19,7 @@ import retrofit2.Callback
 import retrofit2.Response
 import java.net.URLEncoder
 
-class FavoriteVM: ViewModel() {
+class FavoriteVM : ViewModel() {
     private val _uiState = MutableStateFlow(FavoriteState())
     val uiState = _uiState.asStateFlow()
 
@@ -32,14 +32,16 @@ class FavoriteVM: ViewModel() {
         }
     }
 
-    //TODO: 改成手动添加链接、长按删除记录
     fun refreshList() {
         GlobalData.loading = true
         CookieUtil.getCookie {
             Log.i(logTag, it)
             val favoriteApi = YamiboRetrofit.getInstance(it).create(FavoriteApi::class.java)
-            favoriteApi.getFavoritePage().enqueue(object: Callback<ResponseBody> {
-                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+            favoriteApi.getFavoritePage().enqueue(object : Callback<ResponseBody> {
+                override fun onResponse(
+                    call: Call<ResponseBody>,
+                    response: Response<ResponseBody>
+                ) {
                     val respHTML = response.body()?.string()
                     if (respHTML != null) {
                         val parse = Jsoup.parse(respHTML)
@@ -52,7 +54,7 @@ class FavoriteVM: ViewModel() {
                             Log.i(logTag, url)
                             objList.add(Favorite(title, url))
                         }
-                        FavoriteUtil.addFavorite(objList) {filteredList ->
+                        FavoriteUtil.addFavorite(objList) { filteredList ->
                             _uiState.value = FavoriteState(filteredList)
                             GlobalData.loading = false
                         }

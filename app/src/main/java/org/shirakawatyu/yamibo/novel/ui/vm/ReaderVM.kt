@@ -132,6 +132,16 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         }
     }
 
+    private fun extractPageNumFromLoadedUrl(url: String?): Int? {
+        if (url == null) return null
+        return try {
+            url.substringAfter("page=", "").substringBefore("&").toIntOrNull()
+        } catch (e: Exception) {
+            Log.e(logTag, "Could not extract page number from URL: $url", e)
+            null
+        }
+    }
+
     // 从索引更新缓存页面状态的方法
     private fun updateCachedPagesFromIndex(index: Map<String, LocalCacheUtil.CacheIndex>) {
         val novelCache = index[url]
@@ -406,17 +416,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                     cacheWebView?.loadUrl(urlToLoad)
                 }
             }
-        }
-    }
-
-    // 辅助函数：从URL中提取页码
-    private fun extractPageNumFromLoadedUrl(url: String?): Int? {
-        if (url == null) return null
-        return try {
-            url.substringAfter("page=", "").substringBefore("&").toIntOrNull()
-        } catch (e: Exception) {
-            Log.e(logTag, "Could not extract page number from URL: $url", e)
-            null
         }
     }
 
@@ -753,7 +752,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         return (pageContentHeightPx / lineHeightPx).toInt().coerceAtLeast(1)
     }
 
-    // loadFromNetwork (只用于UI加载)
+    // loadFromNetwork
     private fun loadFromNetwork(view: Int) {
         var urlToLoad = "${RequestConfig.BASE_URL}/${this.url}&page=${view}"
         if (currentAuthorId != null) {
@@ -762,8 +761,15 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
 
         _uiState.value = _uiState.value.copy(
             currentView = view,
-            urlToLoad = urlToLoad
+            urlToLoad = "about:blank"
         )
+
+        viewModelScope.launch {
+            delay(10)
+            _uiState.value = _uiState.value.copy(
+                urlToLoad = urlToLoad
+            )
+        }
         showLoadingScrim = true
         isTransitioning = true
     }
@@ -785,13 +791,19 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         }
 
         Log.i(logTag, "Triggering UI preload for page $targetView")
-
         _uiState.value = _uiState.value.copy(
-            urlToLoad = urlToLoad
+            urlToLoad = "about:blank"
         )
+
+        viewModelScope.launch {
+            delay(10)
+            _uiState.value = _uiState.value.copy(
+                urlToLoad = urlToLoad
+            )
+        }
     }
 
-    // loadFinished (移除了 isDiskCaching 拦截块)
+    // loadFinished
     fun loadFinished(
         success: Boolean,
         html: String,
@@ -801,6 +813,12 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         cacheTargetIndex: Int = 0
     ) {
         viewModelScope.launch {
+            val loadedPageNum = if (isFromCache) {
+                _uiState.value.currentView
+            } else {
+                extractPageNumFromLoadedUrl(loadedUrl)
+            }
+
             if (!success) {
                 _uiState.value = _uiState.value.copy(
                     isError = true,
@@ -823,6 +841,17 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             }
 
             if (isPreloading) {
+                if (loadedPageNum != viewBeingPreloaded) {
+                    Log.w(
+                        logTag,
+                        "loadFinished: Received stale preload for $loadedPageNum, expecting $viewBeingPreloaded. Ignoring."
+                    )
+                    if (loadedPageNum != _uiState.value.currentView) {
+                        isPreloading = false
+                    }
+                    return@launch
+                }
+
                 isPreloading = false
 
                 val pageNumToCache = viewBeingPreloaded
@@ -847,7 +876,14 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                 }
 
             } else {
-                // [正常加载] 逻辑 (非预加载，非磁盘缓存)
+                // 正常加载 (非预加载，非磁盘缓存)
+                if (!isFromCache && loadedPageNum != null && loadedPageNum != _uiState.value.currentView) {
+                    Log.w(
+                        logTag,
+                        "loadFinished: Received stale content for $loadedPageNum, but currentView is ${_uiState.value.currentView}. Ignoring."
+                    )
+                    return@launch
+                }
                 if (!isFromCache) {
                     val pageNumToCache = _uiState.value.currentView
                     Log.i(logTag, "Caching current page $pageNumToCache to *memory* for ${url}")
@@ -903,7 +939,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                 isError = false,
                 urlToLoad = "about:blank"
             )
-            kotlinx.coroutines.delay(10)
+            delay(10)
             loadFromNetwork(uiState.value.currentView)
         }
     }
@@ -1237,13 +1273,12 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             nextChapterList = null
             isPreloading = false
 
-            // 使用 "about:blank" 技巧 (从 retryLoad 中提取)
             showLoadingScrim = true
             _uiState.value = _uiState.value.copy(
                 isError = false, // 清除错误状态
                 urlToLoad = "about:blank"
             )
-            kotlinx.coroutines.delay(10) // 等待 recomposition
+            delay(10) // 等待 recomposition
             loadFromNetwork(pageToRefresh) // 加载真实 URL, 这会设置 isTransitioning = true
         }
 

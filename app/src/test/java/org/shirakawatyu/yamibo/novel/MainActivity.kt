@@ -50,7 +50,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// TODO: 阅读器: 反色
 @Composable
 fun App() {
     val navController = rememberNavController()

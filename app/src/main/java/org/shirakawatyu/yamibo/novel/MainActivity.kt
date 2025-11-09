@@ -127,7 +127,10 @@ fun App() {
                         ) {
                             composable("FavoritePage") {
                                 FavoritePage(
-                                    viewModel(stateOwner, factory = ViewModelFactory(context.applicationContext)),
+                                    viewModel(
+                                        stateOwner,
+                                        factory = ViewModelFactory(context.applicationContext)
+                                    ),
                                     navController
                                 )
                             }
@@ -175,7 +178,6 @@ fun App() {
         }
     }
 }
-
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Preview(showBackground = true)
