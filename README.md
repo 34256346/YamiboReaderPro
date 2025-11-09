@@ -8,7 +8,7 @@
 <br><br><br><br><br>
 关于后续：
 <br>
-做这个前完全没有安卓开发经验，做完这个又要去上班了，所以以后大概只会修修bug，不太会有功能更新了。
+以后大概只会修修bug，不太会有功能更新了。
 而且感觉把点子全用上了，因为在仙台告白之前几乎没用过百合会，现在用也几乎只用来看周次，所以也想不到其他的扩展功能了。
 
 ## 内容列表
@@ -42,11 +42,11 @@
     <td><img src="screenshots/1.jpg" width="200"></td>
     <td><img src="screenshots/2.jpg" width="200"></td>
     <td><img src="screenshots/3.jpg" width="200"></td>
-    <td><img src="screenshots/4.jpg" width="200"></td>
+    <td><img src="screenshots/6.jpg" width="200"></td>
   </tr>
   <tr>
     <td><img src="screenshots/5.jpg" width="200"></td>
-    <td><img src="screenshots/6.jpg" width="200"></td>
+    <td><img src="screenshots/4.jpg" width="200"></td>
     <td><img src="screenshots/7.jpg" width="200"></td>
     <td><img src="screenshots/8.jpg" width="200"></td>
   </tr>
