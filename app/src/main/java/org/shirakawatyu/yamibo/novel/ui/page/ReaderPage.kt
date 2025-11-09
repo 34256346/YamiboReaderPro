@@ -855,13 +855,13 @@ private fun MainSettingsMenu(
                     Text("章节", fontSize = 18.sp)
                 }
             }
-            Spacer(modifier = Modifier.weight(0.2f))
+            Spacer(modifier = Modifier.weight(0.1f))
             // 右侧网页翻页控制区域
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
                 modifier = Modifier
-                    .weight(1.5f)
+                    .weight(1.6f)
                     .clickable(
                         enabled = uiState.maxWebView > 1,
                         onClick = { showWebViewPageSelector = true }
