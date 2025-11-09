@@ -1,5 +1,3 @@
-// novel/ui/vm/FavoriteVM.kt - 完整版本
-
 package org.shirakawatyu.yamibo.novel.ui.vm
 
 import android.content.Context

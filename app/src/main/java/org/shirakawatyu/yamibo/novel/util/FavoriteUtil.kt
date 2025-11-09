@@ -1,5 +1,3 @@
-// novel/util/FavoriteUtil.kt
-
 package org.shirakawatyu.yamibo.novel.util
 
 import androidx.datastore.preferences.core.stringPreferencesKey

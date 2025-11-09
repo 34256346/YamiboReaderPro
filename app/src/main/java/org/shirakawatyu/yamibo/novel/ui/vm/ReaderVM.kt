@@ -1,5 +1,3 @@
-// novel/ui/vm/ReaderVM.kt - 完整版本 (已暴露 caching 状态)
-
 package org.shirakawatyu.yamibo.novel.ui.vm
 
 import android.annotation.SuppressLint
@@ -171,7 +169,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             "Starting disk cache for ${pagesToCache.size} pages, includeImages=$includeImages"
         )
 
-        _isDiskCaching.value = true // [MODIFIED]
+        _isDiskCaching.value = true
         diskCacheQueue = pagesToCache.toMutableSet()
         diskCacheIncludeImages = false // includeImages
         diskCacheTotalPages = pagesToCache.size
@@ -550,7 +548,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         }
     }
 
-    // 修改 loadWithSettings，优先使用本地缓存 (不变)
     private fun loadWithSettings() {
         viewModelScope.launch {
             FavoriteUtil.getFavoriteMap { favMap ->
@@ -634,14 +631,13 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         }
     }
 
-    // 修改 onSetView，优先使用本地缓存 (不变)
     fun onSetView(view: Int, forceReload: Boolean = false) {
         if (view == _uiState.value.currentView && !isTransitioning && !forceReload) {
             Log.i(logTag, "Already on view $view. Ignoring.")
             return
         }
 
-        if (view == _uiState.value.currentView + 1 && nextHtmlList != null && !forceReload) { // [MODIFIED] Added !forceReload
+        if (view == _uiState.value.currentView + 1 && nextHtmlList != null && !forceReload) {
             Log.i(logTag, "Using preloaded content for view $view")
             isTransitioning = true
 
@@ -736,7 +732,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                         }
                     }
                 } else {
-                    // [MODIFIED] This block runs if forceReload is true
                     Log.i(logTag, "Force reloading page $view from network.")
                     loadFromNetwork(view)
                     isTransitioning = true
@@ -744,8 +739,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             }
         }
     }
-
-    // ==================== 以下是原有的其他方法 ====================
 
     private fun getAvgItemsPerHorizontalPage(): Int {
         val state = _uiState.value
@@ -1152,7 +1145,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         latestPage = newPage
     }
 
-    // [MODIFIED] 修复 'isTransitioning' 卡死的问题
     fun onPageChange(curPagerState: PagerState, scope: CoroutineScope) {
         if (pagerState == null) {
             pagerState = curPagerState
@@ -1167,7 +1159,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
             val isSettledAtInit =
                 curPagerState.settledPage == _uiState.value.initPage && newPage == _uiState.value.initPage
 
-            // [NEW] 检查用户是否中断了滚动：
+            // 检查用户是否中断了滚动：
             // 1. 滚动已停止 (!isScrollInProgress)
             // 2. 停止的页面 *不是* 我们期望的 initPage
             val userInterrupted = !curPagerState.isScrollInProgress &&
@@ -1256,7 +1248,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
      * - 如果是，则启动后台任务以替换磁盘缓存。
      * - 如果否，则不执行任何磁盘操作。
      */
-    // [MODIFIED] 修复无限加载BUG
     fun forceRefreshCurrentPage() {
         val pageToRefresh = _uiState.value.currentView
         val novelUrl = this.url
@@ -1406,7 +1397,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
                 isError = false
             )
             showLoadingScrim = false
-            isTransitioning = false // [MODIFIED] 确保在 saveSettings 后也重置
+            isTransitioning = false
         }
     }
 
@@ -1482,7 +1473,6 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         )
     }
 
-    // [MODIFIED]
     override fun onCleared() {
         if (initialized) {
             saveHistory(latestPage)
@@ -1491,7 +1481,7 @@ class ReaderVM(private val applicationContext: Context) : ViewModel() {
         nextChapterList = null
         isPreloading = false
 
-        // [NEW] 销毁后台 WebView
+        // 销毁后台 WebView
         viewModelScope.launch(Dispatchers.Main) {
             cacheWebView?.stopLoading()
             cacheWebView?.destroy()

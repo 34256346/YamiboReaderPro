@@ -1,5 +1,3 @@
-// novel/ui/page/FavoritePage.kt
-
 package org.shirakawatyu.yamibo.novel.ui.page
 
 import androidx.compose.foundation.background
