@@ -3,6 +3,8 @@ package org.shirakawatyu.yamibo.novel.ui.page
 import android.annotation.SuppressLint
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -100,6 +102,7 @@ import org.shirakawatyu.yamibo.novel.ui.widget.PassageWebView
 import org.shirakawatyu.yamibo.novel.util.ComposeUtil.Companion.SetStatusBarColor
 import org.shirakawatyu.yamibo.novel.util.ValueUtil
 import kotlin.math.roundToInt
+import androidx.compose.foundation.gestures.detectTapGestures
 
 private val backgroundColors = listOf(
     null, // 代表 "原背景"
@@ -149,6 +152,9 @@ fun ReaderPage(
         val scope = rememberCoroutineScope()
         // 抽屉状态
         val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+        val smoothScrollAnimation = remember {
+            tween<Float>(durationMillis = 432, easing = EaseOut)
+        }
         // 监听VM状态来打开/关闭抽屉
         LaunchedEffect(uiState.showChapterDrawer) {
             if (uiState.showChapterDrawer) {
@@ -416,11 +422,43 @@ fun ReaderPage(
                                     HorizontalPager(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .clickable(
-                                                indication = null,
-                                                interactionSource = remember { MutableInteractionSource() },
-                                                onClick = { showSettings = true }
-                                            )
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(
+                                                    onTap = { offset ->
+                                                        val screenWidth = size.width.toFloat()
+                                                        val leftZoneEnd = screenWidth * 0.25f
+                                                        val rightZoneStart = screenWidth * 0.75f
+
+                                                        if (offset.x < leftZoneEnd) {
+                                                            // 点击左侧25%：上一页
+                                                            scope.launch {
+                                                                val newPage =
+                                                                    (pagerState.currentPage - 1).coerceAtLeast(
+                                                                        0
+                                                                    )
+                                                                pagerState.animateScrollToPage(
+                                                                    page = newPage,
+                                                                    animationSpec = smoothScrollAnimation
+                                                                )
+                                                            }
+                                                        } else if (offset.x > rightZoneStart) {
+                                                            // 点击右侧25%：下一页
+                                                            scope.launch {
+                                                                val newPage =
+                                                                    (pagerState.currentPage + 1)
+                                                                        .coerceAtMost(pagerState.pageCount - 1)
+                                                                pagerState.animateScrollToPage(
+                                                                    page = newPage,
+                                                                    animationSpec = smoothScrollAnimation
+                                                                )
+                                                            }
+                                                        } else {
+                                                            // 点击中间50%：显示设置
+                                                            showSettings = true
+                                                        }
+                                                    }
+                                                )
+                                            }
                                             .pointerInput(Unit) {
                                                 detectTransformGestures { _, pan, zoom, _ ->
                                                     readerVM.onTransform(pan, zoom)
