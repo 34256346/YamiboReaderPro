@@ -1,5 +1,6 @@
 package org.shirakawatyu.yamibo.novel.ui.page
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Bitmap
 import android.os.Build
@@ -66,6 +67,7 @@ object BBSPageState {
  * @param isSelected 表示当前页面是否被选中，用于控制页面加载逻辑。
  * @param cookieFlow Cookie数据流，用于监听登录状态变化
  */
+@SuppressLint("RestrictedApi")
 @Composable
 fun BBSPage(
     webView: WebView,
@@ -175,14 +177,12 @@ fun BBSPage(
         }
 
         webView.webViewClient = object : YamiboWebViewClient() {
-            @RequiresApi(Build.VERSION_CODES.M)
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 currentUrl = url
                 canGoBack = view?.canGoBack() ?: false
             }
 
-            @RequiresApi(Build.VERSION_CODES.M)
             override fun onPageCommitVisible(view: WebView?, url: String?) {
                 super.onPageCommitVisible(view, url)
                 // 页面内容已可见，立即停止加载圈
@@ -194,7 +194,6 @@ fun BBSPage(
                 }
             }
 
-            @RequiresApi(Build.VERSION_CODES.M)
             override fun onPageFinished(view: WebView?, url: String?) {
                 timeoutJob?.cancel()
                 retryCount = 0
@@ -207,7 +206,6 @@ fun BBSPage(
                 }
             }
 
-            @RequiresApi(Build.VERSION_CODES.M)
             override fun onReceivedError(
                 view: WebView?,
                 request: WebResourceRequest?,
@@ -224,7 +222,6 @@ fun BBSPage(
                 }
             }
 
-            @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
             override fun onReceivedHttpError(
                 view: WebView?,
                 request: WebResourceRequest?,

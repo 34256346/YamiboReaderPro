@@ -100,7 +100,7 @@ fun App() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = navBackStackEntry?.destination?.route
                     val bottomNavBarVM: BottomNavBarVM = viewModel(stateOwner!!)
-                    val context = LocalContext.current.applicationContext
+                    val context = LocalContext.current
                     val bbsWebView = remember {
                         WebView(context).apply {
                             layoutParams = ViewGroup.LayoutParams(

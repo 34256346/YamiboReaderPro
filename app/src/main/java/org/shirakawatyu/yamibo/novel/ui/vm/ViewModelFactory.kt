@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
 /**
- * ViewModel Factory，用于创建需要 Context 的 ViewModel
+ * ViewModel Factory，用于创建需要Context的ViewModel
  */
 class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -25,6 +25,6 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
     }
 }
 
-// 在 Composable 中使用：
+// 在Composable中使用：
 // val context = LocalContext.current
 // val readerVM: ReaderVM = viewModel(factory = ViewModelFactory(context.applicationContext))
