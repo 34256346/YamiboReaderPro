@@ -72,6 +72,9 @@ fun BBSPage(
 ) {
     SetStatusBarColor(YamiboColors.primary)
     val indexUrl = "https://bbs.yamibo.com/forum.php"
+    val bbsUrl = "https://bbs.yamibo.com/index.php?mobile=2"
+    val baseBbsUrl = "https://bbs.yamibo.com/"
+
     val activity = LocalContext.current as? Activity
 
     var canGoBack by remember { mutableStateOf(false) }
@@ -201,6 +204,16 @@ fun BBSPage(
                 isLoading = false
                 showLoadError = false
                 super.onPageFinished(view, url)
+                canGoBack = view?.canGoBack() ?: false
+                // 检查是否加载了首页
+                if (view != null && url != null) {
+                    val isHomepage = url == indexUrl || url == bbsUrl || url == baseBbsUrl
+                    if (isHomepage) {
+                        // 清除历史记录
+                        view.clearHistory()
+                    }
+                }
+                // 更新canGoBack状态
                 canGoBack = view?.canGoBack() ?: false
 
                 // 只有在成功加载后才更新状态
