@@ -29,8 +29,7 @@
 
 ## 软件下载
 
-[Github Release](https://github.com/34256346/YamiboReaderPro/releases)
-
+[Github Release](https://github.com/prprbell/YamiboReaderPro/releases)
 
 
 [度盘](https://pan.baidu.com/s/15EZiwp0Z5z8qrg1Gd4IIlA?pwd=yuri)
