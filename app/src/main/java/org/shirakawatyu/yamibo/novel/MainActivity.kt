@@ -209,7 +209,8 @@ fun App(bbsWebView: WebView?) {
                             }
                             composable("MinePage") {
                                 MinePage(
-                                    isSelected = selectedItemIndex == 2
+                                    isSelected = selectedItemIndex == 2,
+                                    navController = navController
                                 )
                             }
 
