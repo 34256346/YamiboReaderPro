@@ -155,21 +155,37 @@ fun ContentViewer(
                     .height(chapterTitleHeight),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 章节标题（左）
-                data.chapterTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                // 书籍标题（左）
+                if (bookTitle.isNotBlank()) {
+                    Text(
+                        text = bookTitle,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 1.dp, top = 4.dp, end = 4.dp),
+                        textAlign = TextAlign.Start
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+
+                // 章节标题（右）
+                data.chapterTitle?.takeIf { it.isNotBlank() && it != "footer" }?.let { title ->
                     Text(
                         text = title,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 1.dp, top = 4.dp, end = 7.dp),
-                        textAlign = TextAlign.Start
+                        modifier = Modifier.padding(end = 7.dp, top = 4.dp),
+                        textAlign = TextAlign.End
                     )
-                } ?: Spacer(modifier = Modifier.weight(1f))
+                }
             }
+
 
             // 正文内容
             if (data.type == ContentType.IMG) {
@@ -250,20 +266,9 @@ fun ContentViewer(
                     .fillMaxWidth()
                     .padding(end = 4.dp, top = 1.dp, bottom = 4.dp)
                     .height(50.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = bookTitle,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .weight(1f)
-                )
-
                 // 右侧显示页码
                 Text(
                     text = "${currentPage}/${pageCount}",
