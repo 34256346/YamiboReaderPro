@@ -236,7 +236,10 @@ fun ReaderPage(
             if (uiState.showChapterDrawer) drawerState.open() else drawerState.close()
         }
         LaunchedEffect(drawerState.isOpen) {
-            if (!drawerState.isOpen) readerVM.toggleChapterDrawer(false)
+            if (!drawerState.isOpen) {
+                readerVM.toggleChapterDrawer(false)
+                showSettings = false
+            }
         }
 
         LaunchedEffect(showSettings, uiState.nightMode) {
