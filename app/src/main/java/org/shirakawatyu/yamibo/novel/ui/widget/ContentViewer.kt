@@ -135,7 +135,7 @@ fun ContentViewer(
                     fontSize = fontSize,
                     letterSpacing = letterSpacing,
                     color = MaterialTheme.colorScheme.onBackground,
-                    isVerticalMode = true // [新增] 告知 JustifiedText
+                    isVerticalMode = true
                 )
             }
         }

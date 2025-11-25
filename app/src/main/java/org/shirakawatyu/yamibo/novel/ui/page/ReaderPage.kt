@@ -365,45 +365,46 @@ fun ReaderPage(
         }
 
         // --- 根布局Box ---
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(finalBackground)
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = drawerState.isOpen,
+            drawerContent = {
+                ChapterDrawerContent(
+                    drawerState = drawerState,
+                    chapterList = uiState.chapterList,
+                    currentChapterTitle = currentChapterTitle,
+                    pageCount = uiState.htmlList.size,
+                    isVerticalMode = uiState.isVerticalMode,
+                    onChapterClick = { index ->
+                        scope.launch {
+                            if (uiState.isVerticalMode) lazyListState.scrollToItem(index)
+                            else pagerState.animateScrollToPage(index)
+                        }
+                        readerVM.toggleChapterDrawer(false)
+                    }
+                )
+            }
         ) {
-            // 内容层
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = statusBarHeight)
-                    .navigationBarsPadding()
+                    .background(finalBackground)
             ) {
-                PassageWebView(
-                    url = uiState.urlToLoad,
-                    loadImages = uiState.loadImages
-                ) { success, html, loadedUrl, maxPage, title ->
-                    readerVM.loadFinished(success, html, loadedUrl, maxPage, title)
-                }
-
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    gesturesEnabled = drawerState.isOpen,
-                    drawerContent = {
-                        ChapterDrawerContent(
-                            drawerState = drawerState,
-                            chapterList = uiState.chapterList,
-                            currentChapterTitle = currentChapterTitle,
-                            pageCount = uiState.htmlList.size,
-                            isVerticalMode = uiState.isVerticalMode,
-                            onChapterClick = { index ->
-                                scope.launch {
-                                    if (uiState.isVerticalMode) lazyListState.scrollToItem(index)
-                                    else pagerState.animateScrollToPage(index)
-                                }
-                                readerVM.toggleChapterDrawer(false)
-                            }
-                        )
-                    }
+                // 内容层
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarHeight)
+                        .navigationBarsPadding()
                 ) {
+                    PassageWebView(
+                        url = uiState.urlToLoad,
+                        loadImages = uiState.loadImages
+                    ) { success, html, loadedUrl, maxPage, title ->
+                        readerVM.loadFinished(success, html, loadedUrl, maxPage, title)
+                    }
+
+                    // 移除原来的 ModalNavigationDrawer 包裹，直接放置内容
                     BoxWithConstraints(
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -574,124 +575,125 @@ fun ReaderPage(
                             }
                         }
                     }
-                }
-            } // 正文Box End
+                } // 正文Box End
 
-            // --- 自定义状态栏层 ---
-            if (!showSettings) {
-                CustomStatusBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(statusBarHeight)
-                        .align(Alignment.TopCenter),
-                    height = statusBarHeight,
-                    backgroundColor = finalBackground,
-                    contentColor = if (uiState.nightMode) Color.Gray else Color.DarkGray,
-                    title = ""
-                )
-            }
-
-            // --- 设置菜单层---
-            if (showSettings) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.2f))
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = {
-                                val settingsNow = Pair(
-                                    Triple(
-                                        uiState.fontSize,
-                                        uiState.lineHeight,
-                                        uiState.padding
-                                    ), uiState.backgroundColor
-                                )
-                                if (settingsOnOpen != settingsNow) readerVM.saveSettings(
-                                    currentPageIndex
-                                )
-                                showSettings = false
-                            }
-                        )
-                )
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shadowElevation = 8.dp
-                ) {
-                    Row(
+                // --- 自定义状态栏层 ---
+                if (!showSettings) {
+                    CustomStatusBar(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        IconButton(onClick = exitReader) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("加载图片", style = MaterialTheme.typography.bodyMedium)
-                                Spacer(Modifier.width(8.dp))
-                                Switch(
-                                    checked = uiState.loadImages,
-                                    onCheckedChange = {
-                                        if (it) showImageWarning =
-                                            true else readerVM.toggleLoadImages(false)
-                                    })
-                            }
-                            Spacer(Modifier.width(16.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("夜间模式", style = MaterialTheme.typography.bodyMedium)
-                                Spacer(Modifier.width(8.dp))
-                                Switch(
-                                    checked = uiState.nightMode,
-                                    onCheckedChange = { readerVM.toggleNightMode(it) })
-                            }
-                            Spacer(Modifier.width(16.dp))
-                            IconButton(onClick = {
-                                readerVM.forceRefreshCurrentPage(); showSettings = false
-                            }) {
-                                Icon(Icons.Default.Refresh, "刷新页面")
-                            }
-                        }
-                    }
+                            .height(statusBarHeight)
+                            .align(Alignment.TopCenter),
+                        height = statusBarHeight,
+                        backgroundColor = finalBackground,
+                        contentColor = if (uiState.nightMode) Color.Gray else Color.DarkGray,
+                        title = ""
+                    )
                 }
 
-                ReaderSettingsBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding(),
-                    uiState = uiState,
-                    pageCount = uiState.htmlList.size,
-                    currentPage = currentPageIndex,
-                    onSetView = { readerVM.onSetView(it) },
-                    onSetPage = { pageIndex ->
-                        scope.launch {
-                            if (uiState.isVerticalMode) lazyListState.scrollToItem(pageIndex)
-                            else pagerState.scrollToPage(pageIndex)
+                // --- 设置菜单层---
+                if (showSettings) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.2f))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick = {
+                                    val settingsNow = Pair(
+                                        Triple(
+                                            uiState.fontSize,
+                                            uiState.lineHeight,
+                                            uiState.padding
+                                        ), uiState.backgroundColor
+                                    )
+                                    if (settingsOnOpen != settingsNow) readerVM.saveSettings(
+                                        currentPageIndex
+                                    )
+                                    showSettings = false
+                                }
+                            )
+                    )
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shadowElevation = 8.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            IconButton(onClick = exitReader) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("加载图片", style = MaterialTheme.typography.bodyMedium)
+                                    Spacer(Modifier.width(8.dp))
+                                    Switch(
+                                        checked = uiState.loadImages,
+                                        onCheckedChange = {
+                                            if (it) showImageWarning =
+                                                true else readerVM.toggleLoadImages(false)
+                                        })
+                                }
+                                Spacer(Modifier.width(16.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("夜间模式", style = MaterialTheme.typography.bodyMedium)
+                                    Spacer(Modifier.width(8.dp))
+                                    Switch(
+                                        checked = uiState.nightMode,
+                                        onCheckedChange = { readerVM.toggleNightMode(it) })
+                                }
+                                Spacer(Modifier.width(16.dp))
+                                IconButton(onClick = {
+                                    readerVM.forceRefreshCurrentPage(); showSettings = false
+                                }) {
+                                    Icon(Icons.Default.Refresh, "刷新页面")
+                                }
+                            }
                         }
-                    },
-                    onSetFontSize = { readerVM.onSetFontSize(it) },
-                    onSetLineHeight = { readerVM.onSetLineHeight(it) },
-                    onSetPadding = { readerVM.onSetPadding(it) },
-                    onShowChapters = { readerVM.toggleChapterDrawer(true) },
-                    onSetBackgroundColor = { readerVM.onSetBackgroundColor(it) },
-                    onSetReadingMode = { isVertical ->
-                        readerVM.setReadingMode(
-                            isVertical,
-                            currentPageIndex
-                        )
-                    },
-                    onShowCacheDialog = {
-                        if (isDiskCaching) readerVM.showCacheProgress() else showCacheDialog = true
                     }
-                )
+
+                    ReaderSettingsBar(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding(),
+                        uiState = uiState,
+                        pageCount = uiState.htmlList.size,
+                        currentPage = currentPageIndex,
+                        onSetView = { readerVM.onSetView(it) },
+                        onSetPage = { pageIndex ->
+                            scope.launch {
+                                if (uiState.isVerticalMode) lazyListState.scrollToItem(pageIndex)
+                                else pagerState.scrollToPage(pageIndex)
+                            }
+                        },
+                        onSetFontSize = { readerVM.onSetFontSize(it) },
+                        onSetLineHeight = { readerVM.onSetLineHeight(it) },
+                        onSetPadding = { readerVM.onSetPadding(it) },
+                        onShowChapters = { readerVM.toggleChapterDrawer(true) },
+                        onSetBackgroundColor = { readerVM.onSetBackgroundColor(it) },
+                        onSetReadingMode = { isVertical ->
+                            readerVM.setReadingMode(
+                                isVertical,
+                                currentPageIndex
+                            )
+                        },
+                        onShowCacheDialog = {
+                            if (isDiskCaching) readerVM.showCacheProgress() else showCacheDialog =
+                                true
+                        }
+                    )
+                }
             }
         }
 
